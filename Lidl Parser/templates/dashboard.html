@@ -38,6 +38,13 @@
 <td>{{ t["n"] }}</td><td>{{ "%.2f"|format(t["total"]) }}</td></tr>{% endfor %}
 </table></div>
 </div>
+{% if user_totals %}
+<div><h2>Spending by user</h2>
+<table><tr><th>User</th><th>Total</th></tr>
+{% for u in user_totals %}<tr><td>{{ u["n"] }}</td>
+<td>{{ u["total"] }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
 <script>
 const monthly = {{ monthly|map(attribute='m')|list|tojson }};
 const mvals = {{ monthly|map(attribute='total')|list|tojson }};

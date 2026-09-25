@@ -12,4 +12,30 @@
 <button type="submit">Save</button>
 </form>
 <p><small>Note: the Lidl password is stored in plaintext in the local SQLite database.</small></p>
+<h2>Users</h2>
+<form method="post" action="{{ url_for('settings_user_add') }}">
+<label>Name <input type="text" name="name"></label>
+<button type="submit">Add user</button>
+</form>
+<ul>
+{% for u in users %}
+<li>{{ u['name'] }}</li>
+{% endfor %}
+</ul>
+<h2>Cards</h2>
+<form method="post" action="{{ url_for('settings_card_link') }}">
+<label>Last 4 <input type="text" name="last4" maxlength="4" pattern="\d{4}"></label>
+<label>User <select name="user_id">
+{% for u in users %}
+<option value="{{ u['id'] }}">{{ u['name'] }}</option>
+{% endfor %}
+</select></label>
+<button type="submit">Link card</button>
+</form>
+<ul>
+{% for c in cards %}
+<li>{{ c['last4'] }} - {{ c['user_name'] }}</li>
+{% endfor %}
+</ul>
+<p><small>Note: Last-4 collisions (two cards sharing digits) map to one user.</small></p>
 {% endblock %}

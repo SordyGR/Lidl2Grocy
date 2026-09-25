@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     store TEXT DEFAULT 'Lidl',
     item_count INTEGER DEFAULT 0,
     total REAL DEFAULT 0,
+    card_last4 TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS items (
@@ -79,6 +80,20 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL
+);
+CREATE TABLE IF NOT EXISTS card_map (
+    last4 TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS item_splits (
+    item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    share REAL NOT NULL CHECK (share > 0 AND share <= 1),
+    PRIMARY KEY (item_id, user_id)
+);
 """
 
 
@@ -102,6 +117,9 @@ def init_db():
         have = [r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()]
         if col not in have:
             conn.execute(ddl)
+    receipts_have = [r[1] for r in conn.execute("PRAGMA table_info(receipts)").fetchall()]
+    if "card_last4" not in receipts_have:
+        conn.execute("ALTER TABLE receipts ADD COLUMN card_last4 TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_products_grocy ON products(grocy_id)")
     conn.commit()
     conn.close()

@@ -8,9 +8,9 @@ import pandas as pd
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
 from db import init_db, get_db
-from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory
+from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory, extract_card_last4
 import grocy as grocy_client
 import settings_store as app_settings
 import fetch_lidl
@@ -131,8 +131,16 @@ def dashboard():
         SELECT clean, COUNT(*) AS n, ROUND(SUM(final),2) AS total
         FROM items GROUP BY clean ORDER BY total DESC LIMIT 10
     """)
+    user_totals = query("""
+        SELECT u.name AS n, ROUND(SUM(i.final * s.share), 2) AS total
+        FROM item_splits s
+        JOIN items i ON i.id = s.item_id
+        JOIN users u ON u.id = s.user_id
+        GROUP BY u.name ORDER BY total DESC
+    """)
     return render_template("dashboard.html", k=kpis, monthly=monthly,
-                           by_cat=by_cat, recent=recent, top=top)
+                           by_cat=by_cat, recent=recent, top=top,
+                           user_totals=user_totals)
 
 
 @app.route("/receipts")
@@ -161,10 +169,11 @@ def upload():
                 continue
             iso_date, seq = parse_receipt_date(fname)
             total = float((df["Qty"] * df["Unit Price"] - df["Discount"]).sum())
+            card_last4 = extract_card_last4(text)
             cur.execute(
-                """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (fname, iso_date, seq, len(df), round(total, 2)))
+                """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (fname, iso_date, seq, len(df), round(total, 2), card_last4))
             conn.commit()
             rid = cur.execute("SELECT id FROM receipts WHERE filename=?", (fname,)).fetchone()["id"]
             cur.execute("DELETE FROM items WHERE receipt_id=?", (rid,))
@@ -414,6 +423,82 @@ def _json_wants_json():
     return "application/json" in (request.headers.get("Accept", ""))
 
 
+def _split_context(conn, r, items):
+    """Users list, per-item splits dict, paid-with label; first-view equal-share seeding."""
+    users = [dict(u) for u in conn.execute("SELECT id, name FROM users ORDER BY name").fetchall()]
+    # First-view seeding writes equal shares — but not while rendering a
+    # just-failed POST (pending flashes): a rejected split must leave the row
+    # unchanged, so don't auto-create rows on that render.
+    if users and not session.get("_flashes"):
+        share = 1.0 / len(users)
+        for it in items:
+            has = conn.execute("SELECT 1 FROM item_splits WHERE item_id=?", (it["id"],)).fetchone()
+            if not has:
+                for u in users:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
+                        (it["id"], u["id"], share))
+        conn.commit()
+    splits = {}
+    for s in conn.execute("""
+            SELECT s.item_id AS item_id, s.user_id AS user_id, s.share AS share,
+                   u.name AS user_name
+            FROM item_splits s JOIN users u ON u.id = s.user_id
+            ORDER BY s.item_id, u.name""").fetchall():
+        splits.setdefault(s["item_id"], []).append(dict(s))
+    last4 = r["card_last4"] if r and "card_last4" in r.keys() else None
+    if not last4:
+        paid_with = "Cash"
+    else:
+        owner = conn.execute(
+            "SELECT u.name AS name FROM card_map c JOIN users u ON u.id = c.user_id WHERE c.last4=?",
+            (last4,)).fetchone()
+        paid_with = owner["name"] if owner else "Card \u2022\u2022" + last4
+    return users, splits, paid_with
+
+
+@app.route("/receipts/<int:rid>/splits", methods=["POST"])
+def receipt_splits(rid):
+    try:
+        item_id = int(request.form.get("item_id") or "0")
+    except ValueError:
+        return redirect(url_for("receipt_detail", rid=rid))
+    conn = get_db()
+    ok = conn.execute("SELECT 1 FROM items WHERE id=? AND receipt_id=?",
+                      (item_id, rid)).fetchone()
+    if not ok:
+        conn.close()
+        return redirect(url_for("receipt_detail", rid=rid))
+    if "user_id" in request.form and request.form.get("user_id"):
+        try:
+            uid = int(request.form["user_id"])
+        except ValueError:
+            uid = 0
+        if uid > 0:
+            conn.execute("DELETE FROM item_splits WHERE item_id=?", (item_id,))
+            conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,1.0)",
+                         (item_id, uid))
+            conn.commit()
+    elif request.form.get("shares"):
+        parts = []
+        try:
+            for chunk in request.form["shares"].split(","):
+                u, s = chunk.split(":")
+                parts.append((int(u), float(s)))
+        except ValueError:
+            parts = []
+        if parts and abs(sum(s for _, s in parts) - 1.0) < 0.001 and all(s > 0 for _, s in parts):
+            conn.execute("DELETE FROM item_splits WHERE item_id=?", (item_id,))
+            for u, s in parts:
+                conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
+                             (item_id, u, s))
+            conn.commit()
+        else:
+            flash("Shares must be positive and sum to 1.0 — row unchanged")
+    conn.close()
+    return redirect(url_for("receipt_detail", rid=rid))
+
+
 @app.route("/receipts/<int:rid>/grocy-preview")
 def grocy_preview(rid):
     r, resolved, catalog, configured, err = resolve_push_items(rid)
@@ -423,10 +508,15 @@ def grocy_preview(rid):
         return jsonify({"configured": configured, "error": err,
                         "stale": bool(catalog and catalog.get("stale")),
                         "items": resolved})
+    items = _receipt_items(rid)
+    conn = get_db()
+    users, splits, paid_with = _split_context(conn, r, items)
+    conn.close()
     return render_template("receipt_detail.html", r=r,
-                           items=_receipt_items(rid), preview=resolved,
+                           items=items, preview=resolved,
                            grocy_configured=configured, grocy_error=err,
-                           push_log=_push_log(rid))
+                           push_log=_push_log(rid),
+                           users=users, splits=splits, paid_with=paid_with)
 
 
 @app.route("/receipts/<int:rid>")
@@ -434,16 +524,19 @@ def receipt_detail(rid):
     conn = get_db()
     r = conn.execute("SELECT * FROM receipts WHERE id=?", (rid,)).fetchone()
     items = conn.execute("SELECT * FROM items WHERE receipt_id=?", (rid,)).fetchall()
-    conn.close()
     if not r:
+        conn.close()
         return "Not found", 404
+    users, splits, paid_with = _split_context(conn, r, items)
+    conn.close()
     try:
         _, preview, catalog, configured, err = resolve_push_items(rid)
     except Exception:
         preview, configured, err = [], False, None
     return render_template("receipt_detail.html", r=r, items=items, preview=preview,
                            grocy_configured=configured, grocy_error=err,
-                           push_log=_push_log(rid))
+                           push_log=_push_log(rid),
+                           users=users, splits=splits, paid_with=paid_with)
 
 
 @app.route("/receipts/<int:rid>/grocy-push", methods=["POST"])
@@ -813,7 +906,42 @@ def settings():
         return redirect(url_for("settings"))
     vals = {k: app_settings.get(k) for k in ("LIDL_USER", "GROCY_URL", "GROCY_API_KEY")}
     vals["LIDL_PASS_SET"] = bool(app_settings.get("LIDL_PASS"))
-    return render_template("settings.html", v=vals)
+    conn = get_db()
+    users = [dict(r) for r in conn.execute("SELECT id, name FROM users ORDER BY name").fetchall()]
+    cards = [dict(r) for r in conn.execute(
+        """SELECT c.last4 AS last4, c.user_id AS user_id, u.name AS user_name
+           FROM card_map c JOIN users u ON u.id = c.user_id ORDER BY c.last4""").fetchall()]
+    conn.close()
+    return render_template("settings.html", v=vals, users=users, cards=cards)
+
+
+@app.route("/settings/users", methods=["POST"])
+def settings_user_add():
+    name = (request.form.get("name") or "").strip()
+    if name:
+        conn = get_db()
+        conn.execute("INSERT OR IGNORE INTO users (name) VALUES (?)", (name,))
+        conn.commit()
+        conn.close()
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/cards", methods=["POST"])
+def settings_card_link():
+    last4 = (request.form.get("last4") or "").strip()
+    try:
+        uid = int(request.form.get("user_id") or "0")
+    except ValueError:
+        uid = 0
+    if len(last4) == 4 and last4.isdigit() and uid > 0:
+        conn = get_db()
+        conn.execute("INSERT OR REPLACE INTO card_map (last4, user_id) VALUES (?, ?)",
+                     (last4, uid))
+        conn.commit()
+        conn.close()
+    else:
+        flash("Card needs exactly 4 digits and a user")
+    return redirect(url_for("settings"))
 
 
 if __name__ == "__main__":
