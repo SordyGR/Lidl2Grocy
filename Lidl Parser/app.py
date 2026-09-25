@@ -742,7 +742,7 @@ def settings():
     if request.method == "POST":
         url = (request.form.get("GROCY_URL") or "").strip()
         if url and not url.rstrip("/").endswith("/api"):
-            flash("Grocy URL must end with /api — value not saved")
+            flash("Grocy URL must end with /api - value not saved")
         else:
             app_settings.set("GROCY_URL", url)
             app_settings.set("GROCY_API_KEY", (request.form.get("GROCY_API_KEY") or "").strip())
