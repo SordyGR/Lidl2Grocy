@@ -10,7 +10,7 @@ sys.path.insert(0, BASE_DIR)
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from db import init_db, get_db
-from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory
+from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory, extract_card_last4
 import grocy as grocy_client
 import settings_store as app_settings
 import fetch_lidl
@@ -161,10 +161,11 @@ def upload():
                 continue
             iso_date, seq = parse_receipt_date(fname)
             total = float((df["Qty"] * df["Unit Price"] - df["Discount"]).sum())
+            card_last4 = extract_card_last4(text)
             cur.execute(
-                """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (fname, iso_date, seq, len(df), round(total, 2)))
+                """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (fname, iso_date, seq, len(df), round(total, 2), card_last4))
             conn.commit()
             rid = cur.execute("SELECT id FROM receipts WHERE filename=?", (fname,)).fetchone()["id"]
             cur.execute("DELETE FROM items WHERE receipt_id=?", (rid,))
