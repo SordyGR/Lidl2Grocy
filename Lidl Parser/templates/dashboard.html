@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Dashboard</h1>
+<div>
+  <button id="sync-btn" type="button">Sync receipts</button>
+  <span id="sync-status"></span>
+  <div id="last-sync"></div>
+</div>
+<details>
+  <summary>Paste receipt text (fallback when auto-login fails)</summary>
+  <form method="post" action="/fetch/paste">
+    <textarea name="text" rows="8" cols="80" placeholder="Paste full Ctrl+A page text here"></textarea><br>
+    <input name="tid" placeholder="transaction id (optional)">
+    <button type="submit">Import pasted receipt</button>
+  </form>
+</details>
 <div class="kpis">
   <div class="kpi"><span>Total spent</span><b>{{ "%.2f"|format(k["spent"]) }} €</b></div>
   <div class="kpi"><span>Receipts</span><b>{{ k["receipts"] }}</b></div>
@@ -34,5 +47,44 @@ const cats = {{ by_cat|map(attribute='c')|list|tojson }};
 const cvals = {{ by_cat|map(attribute='total')|list|tojson }};
 new Chart(document.getElementById('cats'), {type:'doughnut',
   data:{labels:cats, datasets:[{data:cvals}]}});
+</script>
+<script>
+(function() {
+  const btn = document.getElementById('sync-btn');
+  const status = document.getElementById('sync-status');
+  const lastSync = document.getElementById('last-sync');
+  let timer = null;
+  async function refreshStatus() {
+    const r = await fetch('/api/fetch_status');
+    const s = await r.json();
+    if (s.last_sync) lastSync.textContent = 'Last sync: ' + s.last_sync;
+    if (s.running) {
+      status.textContent = 'Syncing…';
+      return;
+    }
+    if (timer) { clearInterval(timer); timer = null; }
+    btn.disabled = false;
+    if (s.error) {
+      status.textContent = 'Error: ' + s.error;
+    } else if (s.result !== null && s.result !== undefined) {
+      status.textContent = 'Done: ' + s.result + ' new/skipped/needs-review';
+      location.reload();
+    }
+  }
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    status.textContent = 'Starting…';
+    const r = await fetch('/fetch/run', {method: 'POST'});
+    const j = await r.json();
+    if (!j.started) {
+      status.textContent = j.reason || 'Already running';
+      btn.disabled = false;
+      return;
+    }
+    status.textContent = 'Syncing…';
+    timer = setInterval(refreshStatus, 3000);
+  });
+  refreshStatus();
+})();
 </script>
 {% endblock %}

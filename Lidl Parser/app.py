@@ -2,6 +2,7 @@
 import os
 import sys
 import sqlite3
+import threading
 import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,9 +12,68 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, f
 from db import init_db, get_db
 from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory
 import grocy as grocy_client
+import settings_store as app_settings
+import fetch_lidl
 
 app = Flask(__name__)
 app.secret_key = "lidl-local-dev"
+
+_FETCH = {"running": False, "result": None, "error": None}
+_FETCH_LOCK = threading.Lock()
+
+
+def _run_sync():
+    try:
+        _FETCH["result"] = fetch_lidl.cmd_sync(latest_only=True)
+    except Exception as e:
+        _FETCH["error"] = str(e)[:300]
+    finally:
+        _FETCH["running"] = False
+
+
+@app.route("/fetch/run", methods=["POST"])
+def fetch_run():
+    with _FETCH_LOCK:
+        if _FETCH["running"]:
+            return jsonify({"started": False, "reason": "already running"})
+        _FETCH.update({"running": True, "result": None, "error": None})
+    threading.Thread(target=_run_sync, daemon=True).start()
+    return jsonify({"started": True})
+
+
+@app.route("/api/fetch_status")
+def api_fetch_status():
+    conn = get_db()
+    last = conn.execute("SELECT MAX(fetched_at) AS at FROM fetch_state").fetchone()["at"]
+    conn.close()
+    return jsonify({"running": _FETCH["running"], "result": _FETCH["result"],
+                    "error": _FETCH["error"], "last_sync": last})
+
+
+@app.route("/fetch/paste", methods=["POST"])
+def fetch_paste():
+    import tempfile
+    text = request.form.get("text", "")
+    tid = (request.form.get("tid") or "").strip() or None
+    if not text.strip():
+        flash("No receipt text pasted")
+        return redirect(url_for("dashboard"))
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                     encoding="utf-8") as f:
+        f.write(text)
+        path = f.name
+    try:
+        res = fetch_lidl.cmd_paste(path, tid)
+    except Exception as e:
+        flash(f"Paste import failed: {e}")
+        return redirect(url_for("dashboard"))
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    flash(f"Pasted receipt saved ({res['items']} items, {res['total']:.2f} EUR)")
+    return redirect(url_for("dashboard"))
 
 
 @app.context_processor
@@ -66,7 +126,7 @@ def dashboard():
         SELECT COALESCE(category,'Misc') AS c, ROUND(SUM(final),2) AS total
         FROM items GROUP BY c ORDER BY total DESC LIMIT 12
     """)
-    recent = query("SELECT * FROM receipts ORDER BY receipt_date DESC LIMIT 10")
+    recent = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC LIMIT 10")
     top = query("""
         SELECT clean, COUNT(*) AS n, ROUND(SUM(final),2) AS total
         FROM items GROUP BY clean ORDER BY total DESC LIMIT 10
@@ -77,7 +137,7 @@ def dashboard():
 
 @app.route("/receipts")
 def receipts():
-    rows = query("SELECT * FROM receipts ORDER BY receipt_date DESC")
+    rows = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC")
     return render_template("receipts.html", rows=rows)
 
 
@@ -734,6 +794,26 @@ def api_abc_analysis():
         out.append({"clean": r["clean"], "value": r["v"],
                     "cum_pct": pct, "class": cls})
     return jsonify({"metric": metric, "rows": out[:top]})
+
+
+@app.route("/settings", methods=["GET", "POST"])
+def settings():
+    if request.method == "POST":
+        url = (request.form.get("GROCY_URL") or "").strip()
+        if url and not url.rstrip("/").endswith("/api"):
+            flash("Grocy URL must end with /api - value not saved")
+        else:
+            app_settings.set("GROCY_URL", url)
+            app_settings.set("GROCY_API_KEY", (request.form.get("GROCY_API_KEY") or "").strip())
+        app_settings.set("LIDL_USER", (request.form.get("LIDL_USER") or "").strip())
+        pw = request.form.get("LIDL_PASS") or ""
+        if pw:
+            app_settings.set("LIDL_PASS", pw)
+        flash("Settings saved")
+        return redirect(url_for("settings"))
+    vals = {k: app_settings.get(k) for k in ("LIDL_USER", "GROCY_URL", "GROCY_API_KEY")}
+    vals["LIDL_PASS_SET"] = bool(app_settings.get("LIDL_PASS"))
+    return render_template("settings.html", v=vals)
 
 
 if __name__ == "__main__":

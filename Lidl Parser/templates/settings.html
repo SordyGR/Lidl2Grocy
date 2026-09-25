@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+<form method="post">
+<h2>Lidl</h2>
+<label>Username <input type="text" name="LIDL_USER" value="{{ v['LIDL_USER'] }}"></label>
+<label>Password <input type="password" name="LIDL_PASS" value=""{% if v['LIDL_PASS_SET'] %} placeholder="saved"{% endif %}></label>
+<h2>Grocy</h2>
+<label>URL <input type="text" name="GROCY_URL" value="{{ v['GROCY_URL'] }}"></label>
+<label>API key <input type="text" name="GROCY_API_KEY" value="{{ v['GROCY_API_KEY'] }}"></label>
+<p><a href="/api/grocy_status">Test Grocy connection</a></p>
+<button type="submit">Save</button>
+</form>
+<p><small>Note: the Lidl password is stored in plaintext in the local SQLite database.</small></p>
+{% endblock %}
