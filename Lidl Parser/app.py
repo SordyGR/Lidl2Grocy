@@ -814,7 +814,42 @@ def settings():
         return redirect(url_for("settings"))
     vals = {k: app_settings.get(k) for k in ("LIDL_USER", "GROCY_URL", "GROCY_API_KEY")}
     vals["LIDL_PASS_SET"] = bool(app_settings.get("LIDL_PASS"))
-    return render_template("settings.html", v=vals)
+    conn = get_db()
+    users = [dict(r) for r in conn.execute("SELECT id, name FROM users ORDER BY name").fetchall()]
+    cards = [dict(r) for r in conn.execute(
+        """SELECT c.last4 AS last4, c.user_id AS user_id, u.name AS user_name
+           FROM card_map c JOIN users u ON u.id = c.user_id ORDER BY c.last4""").fetchall()]
+    conn.close()
+    return render_template("settings.html", v=vals, users=users, cards=cards)
+
+
+@app.route("/settings/users", methods=["POST"])
+def settings_user_add():
+    name = (request.form.get("name") or "").strip()
+    if name:
+        conn = get_db()
+        conn.execute("INSERT OR IGNORE INTO users (name) VALUES (?)", (name,))
+        conn.commit()
+        conn.close()
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/cards", methods=["POST"])
+def settings_card_link():
+    last4 = (request.form.get("last4") or "").strip()
+    try:
+        uid = int(request.form.get("user_id") or "0")
+    except ValueError:
+        uid = 0
+    if len(last4) == 4 and last4.isdigit() and uid > 0:
+        conn = get_db()
+        conn.execute("INSERT OR REPLACE INTO card_map (last4, user_id) VALUES (?, ?)",
+                     (last4, uid))
+        conn.commit()
+        conn.close()
+    else:
+        flash("Card needs exactly 4 digits and a user")
+    return redirect(url_for("settings"))
 
 
 if __name__ == "__main__":
