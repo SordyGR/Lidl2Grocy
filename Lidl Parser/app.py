@@ -11,6 +11,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, f
 from db import init_db, get_db
 from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory
 import grocy as grocy_client
+import settings_store as app_settings
 
 app = Flask(__name__)
 app.secret_key = "lidl-local-dev"
@@ -734,6 +735,24 @@ def api_abc_analysis():
         out.append({"clean": r["clean"], "value": r["v"],
                     "cum_pct": pct, "class": cls})
     return jsonify({"metric": metric, "rows": out[:top]})
+
+
+@app.route("/settings", methods=["GET", "POST"])
+def settings():
+    if request.method == "POST":
+        url = (request.form.get("GROCY_URL") or "").strip()
+        if url and not url.rstrip("/").endswith("/api"):
+            flash("Grocy URL must end with /api — value not saved")
+        else:
+            app_settings.set("GROCY_URL", url)
+            app_settings.set("GROCY_API_KEY", (request.form.get("GROCY_API_KEY") or "").strip())
+        app_settings.set("LIDL_USER", (request.form.get("LIDL_USER") or "").strip())
+        app_settings.set("LIDL_PASS", request.form.get("LIDL_PASS") or "")
+        flash("Settings saved")
+        return redirect(url_for("settings"))
+    vals = {k: app_settings.get(k) for k in ("LIDL_USER", "GROCY_URL", "GROCY_API_KEY")}
+    vals["LIDL_PASS_SET"] = bool(app_settings.get("LIDL_PASS"))
+    return render_template("settings.html", v=vals)
 
 
 if __name__ == "__main__":
