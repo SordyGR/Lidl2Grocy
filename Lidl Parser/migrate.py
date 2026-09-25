@@ -15,6 +15,9 @@ BARCODES_XLSX = os.path.join(BASE_DIR, "Barcodes.xlsx")
 
 
 def load_product_map():
+    if not os.path.exists(PRODUCT_MAP):
+        print("product_map.csv not found — skipping legacy product import")
+        return pd.DataFrame(columns=["raw", "clean", "category"])
     df = pd.read_csv(PRODUCT_MAP, encoding="utf-8-sig", sep=None, engine="python")
     df.columns = [c.strip().lower() for c in df.columns]
     for col in ("raw", "clean", "category"):
@@ -71,8 +74,11 @@ def migrate():
 
     memory = build_memory(pd.read_sql("SELECT raw, clean, category FROM products", conn))
 
-    # receipts
-    files = sorted(f for f in os.listdir(RECEIPT_FOLDER) if f.endswith(".txt"))
+    # receipts (folder absent on fresh deploys — nothing to import)
+    if os.path.isdir(RECEIPT_FOLDER):
+        files = sorted(f for f in os.listdir(RECEIPT_FOLDER) if f.endswith(".txt"))
+    else:
+        files = []
     print(f"receipt files: {len(files)}")
     n_receipts = n_items = 0
     for fname in files:
