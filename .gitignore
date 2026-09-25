@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+
+# App data / local DB (rebuildable, may contain personal purchase history)
+**/data/
+**/data/lidl.db*
+**/data/.lidl-profile/
+**/*.db-journal
+
+# Personal purchase data - kept locally only, never pushed
+/Lidl Parser/receipts/
+Lidl Parser/output/
+Lidl Parser/data/
+Lidl Parser/*.csv
+Lidl Parser/*.xlsx
+Lidl Parser/*.xls
+Lidl Parser/*.bak
+Lidl Parser/*.txt
+!Lidl Parser/requirements.txt
+!Lidl Parser/README.md
+Lidl Parser/tests/data_*.txt
+Lidl Parser/tests/*.csv
+
+# Generated outputs - large local Excel exports
+**/output/analysis_*.xlsx
+**/output/~$*.xlsx
+
+# OS / Office temp files
+~$*.xlsx
+~$*.xls
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.env

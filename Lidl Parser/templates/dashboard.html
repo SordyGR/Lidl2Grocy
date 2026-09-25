@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="kpis">
+  <div class="kpi"><span>Total spent</span><b>{{ "%.2f"|format(k["spent"]) }} €</b></div>
+  <div class="kpi"><span>Receipts</span><b>{{ k["receipts"] }}</b></div>
+  <div class="kpi"><span>Items</span><b>{{ k["items"] }}</b></div>
+  <div class="kpi"><span>Products mapped</span><b>{{ k["products"] }}</b></div>
+  <div class="kpi warn"><span>Unmapped items</span><b>{{ k["unmapped"] }}</b></div>
+</div>
+<div class="grid">
+<div><h2>Monthly spend</h2><canvas id="monthly"></canvas></div>
+<div><h2>By category</h2><canvas id="cats"></canvas></div>
+</div>
+<div class="grid">
+<div><h2>Recent receipts</h2>
+<table><tr><th>Date</th><th>File</th><th>Items</th><th>Total</th></tr>
+{% for r in recent %}<tr><td>{{ r["receipt_date"] }}</td>
+<td><a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a></td>
+<td>{{ r["item_count"] }}</td><td>{{ "%.2f"|format(r["total"]) }}</td></tr>{% endfor %}
+</table></div>
+<div><h2>Top products</h2>
+<table><tr><th>Product</th><th>n</th><th>Total</th></tr>
+{% for t in top %}<tr><td><a href="/prices?clean={{ t["clean"] }}">{{ t["clean"] }}</a></td>
+<td>{{ t["n"] }}</td><td>{{ "%.2f"|format(t["total"]) }}</td></tr>{% endfor %}
+</table></div>
+</div>
+<script>
+const monthly = {{ monthly|map(attribute='m')|list|tojson }};
+const mvals = {{ monthly|map(attribute='total')|list|tojson }};
+new Chart(document.getElementById('monthly'), {type:'bar',
+  data:{labels:monthly, datasets:[{data:mvals}]}, options:{plugins:{legend:{display:false}}}});
+const cats = {{ by_cat|map(attribute='c')|list|tojson }};
+const cvals = {{ by_cat|map(attribute='total')|list|tojson }};
+new Chart(document.getElementById('cats'), {type:'doughnut',
+  data:{labels:cats, datasets:[{data:cvals}]}});
+</script>
+{% endblock %}

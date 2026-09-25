@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New Grocy item</h1>
+{% if not grocy_configured %}
+<p class="notice-warn">Grocy not configured — set GROCY_URL (with /api) + GROCY_API_KEY.</p>
+{% elif grocy_error %}
+<p class="notice-err">{{ grocy_error }}</p>
+{% endif %}
+<form method="post" action="/mappings/new-item">
+<input type="hidden" name="raw" value="{{ prod["raw"] }}">
+<fieldset><legend>Identity</legend>
+<label>Grocy name <input name="name" value="{{ prod["clean"] }}" size="30" required></label>
+<label>Brand <input name="brand" value="{{ prod["brand"] or "" }}" size="16"></label>
+<label>Barcode <input name="barcode" value="{{ prod["barcode"] or "" }}" size="16"></label>
+<label>Description <input name="description" size="40" placeholder="optional"></label>
+</fieldset>
+<fieldset><legend>Storage</legend>
+<label>Location <select name="location_id"><option value="">location…</option>
+{% for l in locations %}<option value="{{ l["id"] }}">{{ l["name"] }}</option>{% endfor %}</select></label>
+<label>Min stock <input name="min_stock" size="6" placeholder="0"></label>
+</fieldset>
+<fieldset><legend>Units</legend>
+<label>Purchase unit <select name="qu_purchase"><option value="">purchase unit…</option>
+{% for u in quantity_units %}<option value="{{ u["id"] }}">{{ u["name"] }}</option>{% endfor %}</select></label>
+<label>Stock unit <select name="qu_stock"><option value="">stock unit…</option>
+{% for u in quantity_units %}<option value="{{ u["id"] }}">{{ u["name"] }}</option>{% endfor %}</select></label>
+<label>Purchase→stock factor <input name="qu_factor" size="6" placeholder="1"></label>
+</fieldset>
+<fieldset><legend>Classification</legend>
+<label>Product group <select name="product_group_id"><option value="">group…</option>
+{% for g in groups %}<option value="{{ g["id"] }}">{{ g["name"] }}</option>{% endfor %}</select></label>
+<label>Parent product id <input name="parent_product_id" size="6" placeholder="optional"></label>
+</fieldset>
+<button {% if not grocy_configured %}disabled{% endif %}>Create + link</button>
+<a href="/mappings">Cancel</a>
+</form>
+{% endblock %}

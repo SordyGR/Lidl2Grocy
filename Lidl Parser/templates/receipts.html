@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Receipts</h1>
+<table><tr><th>Date</th><th>File</th><th>Items</th><th>Total €</th></tr>
+{% for r in rows %}<tr><td>{{ r["receipt_date"] }}</td>
+<td><a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a></td>
+<td>{{ r["item_count"] }}</td><td>{{ "%.2f"|format(r["total"]) }}</td></tr>{% endfor %}
+</table>
+{% endblock %}

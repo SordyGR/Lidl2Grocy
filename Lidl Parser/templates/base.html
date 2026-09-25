@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="{{ theme }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lidl Parser</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<nav>
+  <a href="/">Dashboard</a>
+  <a href="/receipts">Receipts</a>
+  <a href="/upload">Upload</a>
+  <a href="/mappings">Mappings</a>
+  <a href="/prices">Prices</a>
+  <span class="spacer"></span>
+  {% if theme == "dark" %}
+  <a class="theme-toggle" href="{{ url_for('theme_set', mode='light') }}">☀ Light</a>
+  {% elif theme == "light" %}
+  <a class="theme-toggle" href="{{ url_for('theme_set', mode='dark') }}">🌙 Dark</a>
+  {% else %}
+  <a class="theme-toggle" href="{{ url_for('theme_set', mode='dark') }}">🌙 Dark</a>
+  {% endif %}
+</nav>
+<main>
+{% with messages = get_flashed_messages() %}
+{% if messages %}<div class="flash">{% for m in messages %}<p>{{ m }}</p>{% endfor %}</div>{% endif %}
+{% endwith %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

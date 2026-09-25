@@ -1,0 +1,42 @@
+:root{
+--bg:#fafafa;--fg:#222;--panel:#fff;--border:#ddd;--thead:#f0f4f8;
+--nav:#102a43;--nav-fg:#fff;--muted:#666;--warn-bg:#fef3c7;--warn-border:#f59e0b;
+--err-bg:#fee;--err-border:#f5c6c6;--input-bg:#fff;--input-border:#bbb;
+}
+:root[data-theme="dark"]{
+--bg:#121417;--fg:#e2e5e9;--panel:#1b1f24;--border:#333a42;--thead:#232a32;
+--nav:#0a1520;--nav-fg:#e2e5e9;--muted:#9aa3ad;--warn-bg:#3a2f10;--warn-border:#b45309;
+--err-bg:#3d2222;--err-border:#7f3b3b;--input-bg:#22272e;--input-border:#444c56;
+}
+@media (prefers-color-scheme: dark){
+:root[data-theme="system"]{
+--bg:#121417;--fg:#e2e5e9;--panel:#1b1f24;--border:#333a42;--thead:#232a32;
+--nav:#0a1520;--nav-fg:#e2e5e9;--muted:#9aa3ad;--warn-bg:#3a2f10;--warn-border:#b45309;
+--err-bg:#3d2222;--err-border:#7f3b3b;--input-bg:#22272e;--input-border:#444c56;
+}
+}
+body{font-family:system-ui,sans-serif;margin:0;background:var(--bg);color:var(--fg)}
+nav{background:var(--nav);color:var(--nav-fg);padding:10px;display:flex;gap:16px;align-items:center}
+nav a{color:var(--nav-fg);text-decoration:none;font-weight:600}
+nav .spacer{flex:1}
+nav .theme-toggle{color:var(--nav-fg);border:1px solid var(--nav-fg);border-radius:6px;padding:4px 10px;text-decoration:none;font-size:13px}
+main{max-width:1100px;margin:20px auto;padding:0 16px}
+table{border-collapse:collapse;width:100%;background:var(--panel);margin:12px 0}
+th,td{border:1px solid var(--border);padding:6px 8px;font-size:14px;text-align:left}
+th{background:var(--thead)}
+th a{color:inherit}
+.kpis{display:flex;gap:12px;flex-wrap:wrap}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 16px;min-width:140px}
+.kpi span{display:block;font-size:12px;color:var(--muted)}
+.kpi b{font-size:20px}
+.kpi.warn b{color:#b45309}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+.flash{background:var(--warn-bg);border:1px solid var(--warn-border);padding:8px 12px;border-radius:6px}
+.notice-warn{background:var(--warn-bg);border:1px solid var(--warn-border);padding:8px 12px;border-radius:6px}
+.notice-err{background:var(--err-bg);border:1px solid var(--err-border);padding:8px 12px;border-radius:6px}
+input,select,button{padding:6px 8px;font-size:14px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-border);border-radius:4px}
+button{cursor:pointer}
+a{color:#2563eb}
+:root[data-theme="dark"] a{color:#7aa7ff}
+@media (prefers-color-scheme: dark){:root[data-theme="system"] a{color:#7aa7ff}}
