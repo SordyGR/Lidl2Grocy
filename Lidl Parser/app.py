@@ -124,7 +124,7 @@ def dashboard():
         SELECT COALESCE(category,'Misc') AS c, ROUND(SUM(final),2) AS total
         FROM items GROUP BY c ORDER BY total DESC LIMIT 12
     """)
-    recent = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC LIMIT 10")
+    recent = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC LIMIT 10")
     top = query("""
         SELECT clean, COUNT(*) AS n, ROUND(SUM(final),2) AS total
         FROM items GROUP BY clean ORDER BY total DESC LIMIT 10
@@ -135,7 +135,7 @@ def dashboard():
 
 @app.route("/receipts")
 def receipts():
-    rows = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC")
+    rows = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC")
     return render_template("receipts.html", rows=rows)
 
 
