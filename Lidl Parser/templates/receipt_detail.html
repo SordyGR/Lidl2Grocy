@@ -2,12 +2,24 @@
 {% block content %}
 <h1>{{ r["filename"] }} <small>{{ r["receipt_date"] }}</small></h1>
 <p>{{ r["item_count"] }} items — {{ "%.2f"|format(r["total"]) }} €</p>
-<table><tr><th>Raw</th><th>Clean</th><th>Cat</th><th>Qty</th><th>Unit</th><th>Disc</th><th>Final</th><th>Match</th></tr>
+<p>Paid with {{ paid_with }}</p>
+<table><tr><th>Raw</th><th>Clean</th><th>Cat</th><th>Qty</th><th>Unit</th><th>Disc</th><th>Final</th><th>Match</th><th>Owner</th></tr>
 {% for i in items %}<tr>
 <td>{{ i["raw"] }}</td><td>{{ i["clean"] }}</td><td>{{ i["category"] }}</td>
 <td>{{ i["qty"] }}</td><td>{{ "%.2f"|format(i["unit_price"]) }}</td>
 <td>{{ "%.2f"|format(i["discount"]) }}</td><td>{{ "%.2f"|format(i["final"]) }}</td>
 <td>{{ i["match_type"] }} {{ i["match_score"]|round|int if i["match_score"] else "" }}</td>
+<td>{% for s in splits.get(i["id"], []) %}{{ s["user_name"] }} {{ s["share"] }}{% if not loop.last %}, {% endif %}{% endfor %}
+<form method="post" action="/receipts/{{ r["id"] }}/splits">
+<input type="hidden" name="item_id" value="{{ i["id"] }}">
+<select name="user_id">
+<option value="">—</option>
+{% for u in users %}<option value="{{ u["id"] }}">{{ u["name"] }}</option>{% endfor %}
+</select>
+<input name="shares" size="14" placeholder="uid:share,uid:share" value="{% for s in splits.get(i["id"], []) %}{{ s["user_id"] }}:{{ s["share"] }}{% if not loop.last %},{% endif %}{% endfor %}">
+<button>Save</button>
+</form>
+</td>
 </tr>{% endfor %}
 </table>
 
