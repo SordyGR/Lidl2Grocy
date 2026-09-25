@@ -2,6 +2,7 @@
 import os
 import sys
 import sqlite3
+import threading
 import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -12,9 +13,39 @@ from db import init_db, get_db
 from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory
 import grocy as grocy_client
 import settings_store as app_settings
+import fetch_lidl
 
 app = Flask(__name__)
 app.secret_key = "lidl-local-dev"
+
+_FETCH = {"running": False, "result": None, "error": None}
+
+
+def _run_sync():
+    try:
+        _FETCH["result"] = fetch_lidl.cmd_sync(latest_only=True)
+    except Exception as e:
+        _FETCH["error"] = str(e)[:300]
+    finally:
+        _FETCH["running"] = False
+
+
+@app.route("/fetch/run", methods=["POST"])
+def fetch_run():
+    if _FETCH["running"]:
+        return jsonify({"started": False, "reason": "already running"})
+    _FETCH.update({"running": True, "result": None, "error": None})
+    threading.Thread(target=_run_sync, daemon=True).start()
+    return jsonify({"started": True})
+
+
+@app.route("/api/fetch_status")
+def api_fetch_status():
+    conn = get_db()
+    last = conn.execute("SELECT MAX(fetched_at) AS at FROM fetch_state").fetchone()["at"]
+    conn.close()
+    return jsonify({"running": _FETCH["running"], "result": _FETCH["result"],
+                    "error": _FETCH["error"], "last_sync": last})
 
 
 @app.context_processor
