@@ -1,5 +1,7 @@
 # Lidl Parser — DB + Web UI
 
+> Full setup guide and usage wiki: [repo-root README](../README.md).
+
 ## Run
 ```
 pip install -r requirements.txt

@@ -1,0 +1,30 @@
+# Receipt lifecycle (docs/diagrams/lifecycle.d2 — render with d2)
+direction: down
+fetch: Dashboard sync {
+  shape: rectangle
+}
+login: Lidl auto-login {
+  shape: rectangle
+}
+parse: Parse items + card last-4 {
+  shape: rectangle
+}
+matchup: Match raw to Grocy {
+  shape: rectangle
+}
+create: ERP new-item creation {
+  shape: rectangle
+}
+split: Assign / split per user {
+  shape: rectangle
+}
+analyze: Prices + ABC
+push: Push to Grocy stock
+fetch -> login: stored creds
+login -> parse: receipt text
+parse -> matchup: product memory
+matchup -> create: if missing
+matchup -> split: linked items
+create -> split: linked items
+split -> analyze: final x share
+split -> push: full amounts

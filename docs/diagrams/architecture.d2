@@ -1,0 +1,26 @@
+# Architecture (docs/diagrams/architecture.d2 — render with d2)
+direction: right
+user: User browser {
+  shape: person
+}
+web: Flask/gunicorn app :5090
+db: SQLite lidl.db {
+  shape: cylinder
+}
+pw: Playwright Chromium
+vol_data: ./data volume
+vol_receipts: ./receipts volume
+grocy: Grocy API {
+  shape: cylinder
+}
+lidl: lidl-hellas.gr {
+  shape: cloud
+}
+user -> web: HTTP :5090
+web -> db: reads/writes
+web -> pw: drives sync
+db -> vol_data: persists
+pw -> vol_data: Lidl profile
+vol_receipts -> web: receipt texts
+web -> grocy: products/stock API
+pw -> lidl: purchase history
