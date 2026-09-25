@@ -40,3 +40,6 @@ Thumbs.db
 # Secrets
 .env
 *.env
+
+# superpowers worktrees (isolated implementation workspaces)
+.worktrees/
