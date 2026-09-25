@@ -1,7 +1,10 @@
 # Lidl Parser/tests/test_grocy_match.py
-def test_get_config_missing_raises():
+def test_get_config_missing_raises(tmp_path, monkeypatch):
     import os
     from grocy import GrocyConfigError, get_config
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / "nocfg.db"))
+    dbmod.init_db()
     old_url = os.environ.pop("GROCY_URL", None)
     old_key = os.environ.pop("GROCY_API_KEY", None)
     try:
@@ -17,11 +20,13 @@ def test_get_config_missing_raises():
             os.environ["GROCY_API_KEY"] = old_key
 
 
-def test_url_trailing_slash_normalized():
-    import os
+def test_url_trailing_slash_normalized(tmp_path, monkeypatch):
     from grocy import get_config
-    os.environ["GROCY_URL"] = "https://x.example.com/api/"
-    os.environ["GROCY_API_KEY"] = "k"
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / "norm.db"))
+    dbmod.init_db()
+    monkeypatch.setenv("GROCY_URL", "https://x.example.com/api/")
+    monkeypatch.setenv("GROCY_API_KEY", "k")
     base, _ = get_config()
     assert base == "https://x.example.com/api"
 

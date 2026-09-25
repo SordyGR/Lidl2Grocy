@@ -75,6 +75,10 @@ CREATE TABLE IF NOT EXISTS grocy_pushes (
     skipped_count INTEGER DEFAULT 0,
     errors TEXT DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT DEFAULT ''
+);
 """
 
 
