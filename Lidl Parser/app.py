@@ -48,6 +48,32 @@ def api_fetch_status():
                     "error": _FETCH["error"], "last_sync": last})
 
 
+@app.route("/fetch/paste", methods=["POST"])
+def fetch_paste():
+    import tempfile
+    text = request.form.get("text", "")
+    tid = (request.form.get("tid") or "").strip() or None
+    if not text.strip():
+        flash("No receipt text pasted")
+        return redirect(url_for("dashboard"))
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                     encoding="utf-8") as f:
+        f.write(text)
+        path = f.name
+    try:
+        res = fetch_lidl.cmd_paste(path, tid)
+    except Exception as e:
+        flash(f"Paste import failed: {e}")
+        return redirect(url_for("dashboard"))
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    flash(f"Pasted receipt saved ({res['items']} items, {res['total']:.2f} EUR)")
+    return redirect(url_for("dashboard"))
+
+
 @app.context_processor
 def inject_theme():
     mode = request.cookies.get("theme", "system")
