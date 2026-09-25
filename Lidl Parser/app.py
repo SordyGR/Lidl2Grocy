@@ -131,8 +131,16 @@ def dashboard():
         SELECT clean, COUNT(*) AS n, ROUND(SUM(final),2) AS total
         FROM items GROUP BY clean ORDER BY total DESC LIMIT 10
     """)
+    user_totals = query("""
+        SELECT u.name AS n, ROUND(SUM(i.final * s.share), 2) AS total
+        FROM item_splits s
+        JOIN items i ON i.id = s.item_id
+        JOIN users u ON u.id = s.user_id
+        GROUP BY u.name ORDER BY total DESC
+    """)
     return render_template("dashboard.html", k=kpis, monthly=monthly,
-                           by_cat=by_cat, recent=recent, top=top)
+                           by_cat=by_cat, recent=recent, top=top,
+                           user_totals=user_totals)
 
 
 @app.route("/receipts")
