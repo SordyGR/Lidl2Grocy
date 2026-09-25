@@ -6,6 +6,14 @@
   <span id="sync-status"></span>
   <div id="last-sync"></div>
 </div>
+<details>
+  <summary>Paste receipt text (fallback when auto-login fails)</summary>
+  <form method="post" action="/fetch/paste">
+    <textarea name="text" rows="8" cols="80" placeholder="Paste full Ctrl+A page text here"></textarea><br>
+    <input name="tid" placeholder="transaction id (optional)">
+    <button type="submit">Import pasted receipt</button>
+  </form>
+</details>
 <div class="kpis">
   <div class="kpi"><span>Total spent</span><b>{{ "%.2f"|format(k["spent"]) }} €</b></div>
   <div class="kpi"><span>Receipts</span><b>{{ k["receipts"] }}</b></div>
