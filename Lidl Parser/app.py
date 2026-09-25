@@ -19,6 +19,7 @@ app = Flask(__name__)
 app.secret_key = "lidl-local-dev"
 
 _FETCH = {"running": False, "result": None, "error": None}
+_FETCH_LOCK = threading.Lock()
 
 
 def _run_sync():
@@ -32,9 +33,10 @@ def _run_sync():
 
 @app.route("/fetch/run", methods=["POST"])
 def fetch_run():
-    if _FETCH["running"]:
-        return jsonify({"started": False, "reason": "already running"})
-    _FETCH.update({"running": True, "result": None, "error": None})
+    with _FETCH_LOCK:
+        if _FETCH["running"]:
+            return jsonify({"started": False, "reason": "already running"})
+        _FETCH.update({"running": True, "result": None, "error": None})
     threading.Thread(target=_run_sync, daemon=True).start()
     return jsonify({"started": True})
 
@@ -804,7 +806,9 @@ def settings():
             app_settings.set("GROCY_URL", url)
             app_settings.set("GROCY_API_KEY", (request.form.get("GROCY_API_KEY") or "").strip())
         app_settings.set("LIDL_USER", (request.form.get("LIDL_USER") or "").strip())
-        app_settings.set("LIDL_PASS", request.form.get("LIDL_PASS") or "")
+        pw = request.form.get("LIDL_PASS") or ""
+        if pw:
+            app_settings.set("LIDL_PASS", pw)
         flash("Settings saved")
         return redirect(url_for("settings"))
     vals = {k: app_settings.get(k) for k in ("LIDL_USER", "GROCY_URL", "GROCY_API_KEY")}
