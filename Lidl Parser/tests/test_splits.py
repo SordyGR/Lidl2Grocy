@@ -45,3 +45,19 @@ def test_bad_shares_rejected(tmp_path, monkeypatch):
     n = conn.execute("SELECT COUNT(*) FROM item_splits WHERE item_id=?", (iid,)).fetchone()[0]
     conn.close()
     assert n == 0
+
+
+def test_dashboard_user_totals(tmp_path, monkeypatch):
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / "sp3.db"))
+    dbmod.init_db()
+    rid, iid = _seed(dbmod)
+    conn = dbmod.get_db()
+    conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)", (iid, 1, 0.6))
+    conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)", (iid, 2, 0.4))
+    conn.commit()
+    conn.close()
+    import app as appmod
+    appmod.app.testing = True
+    body = appmod.app.test_client().get("/").get_data(as_text=True)
+    assert "Alice" in body and "6.0" in body
