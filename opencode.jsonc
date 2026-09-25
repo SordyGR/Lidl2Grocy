@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Project-level superpowers install (V2, 2.0.4+).
+  // Kept here intentionally — do NOT move to global ~/.config/opencode/opencode.jsonc.
+  "plugins": [
+    "superpowers@git+https://github.com/obra/superpowers.git"
+  ],
+  "mcp": {
+    "codegraph": {
+      "type": "local",
+      "command": [
+        "codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "enabled": true
+    }
+  }
+}

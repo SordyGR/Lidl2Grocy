@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ r["filename"] }} <small>{{ r["receipt_date"] }}</small></h1>
+<p>{{ r["item_count"] }} items — {{ "%.2f"|format(r["total"]) }} €</p>
+<table><tr><th>Raw</th><th>Clean</th><th>Cat</th><th>Qty</th><th>Unit</th><th>Disc</th><th>Final</th><th>Match</th></tr>
+{% for i in items %}<tr>
+<td>{{ i["raw"] }}</td><td>{{ i["clean"] }}</td><td>{{ i["category"] }}</td>
+<td>{{ i["qty"] }}</td><td>{{ "%.2f"|format(i["unit_price"]) }}</td>
+<td>{{ "%.2f"|format(i["discount"]) }}</td><td>{{ "%.2f"|format(i["final"]) }}</td>
+<td>{{ i["match_type"] }} {{ i["match_score"]|round|int if i["match_score"] else "" }}</td>
+</tr>{% endfor %}
+</table>
+
+<h2>Grocy push</h2>
+{% if push_log %}
+<p>Already pushed at {{ push_log["pushed_at"] }} — {{ push_log["pushed_count"] }} pushed, {{ push_log["skipped_count"] }} skipped.</p>
+{% endif %}
+{% if not grocy_configured %}
+<p class="notice-warn">Grocy not configured — set GROCY_URL (with /api) + GROCY_API_KEY to enable push.</p>
+{% elif grocy_error %}
+<p class="notice-err">Grocy error — {{ grocy_error }}</p>
+{% endif %}
+{% if preview %}
+<table><tr><th>Raw</th><th>Grocy</th><th>Amount</th><th>Price</th><th>Status</th></tr>
+{% for p in preview %}<tr>
+<td>{{ p["raw"] }}</td>
+<td>{% if p["grocy_id"] %}#{{ p["grocy_id"] }} {{ p["grocy_name"] }}{% else %}—{% endif %}</td>
+<td>{{ p["amount"] }}</td><td>{{ "%.6g"|format(p["price"]) }}</td><td>{{ p["status"] }}</td>
+</tr>{% endfor %}
+</table>
+<form method="post" action="/receipts/{{ r["id"] }}/grocy-push">
+{% if push_log %}<label><input type="checkbox" name="force" value="1"> Force re-push (may duplicate entries in Grocy)</label>{% endif %}
+<button>Push to Grocy</button>
+</form>
+{% endif %}
+{% endblock %}

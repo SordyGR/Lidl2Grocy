@@ -1,0 +1,56 @@
+direction: down
+
+title: Lidl Receipt Parser Walkthrough {
+  shape: text
+  style.font-size: 28
+  style.bold: true
+}
+
+setup: One-time setup {
+  direction: down
+  install: |code
+    pip install -r requirements.txt
+    playwright install chromium
+    python migrate.py
+  |
+  login: Log in once at lidl-hellas.gr | Session saved in data/.lidl-profile/
+  install -> login
+}
+
+receipts: Get receipts {
+  direction: right
+  fetch: Auto-fetch | python fetch_lidl.py --latest-only
+  paste: Manual fallback | python fetch_lidl.py --paste pasted.txt --tid 14000...
+  upload: Web upload | Open /upload, drop .txt files
+}
+
+parse: Parse and match {
+  direction: down
+  parser: receipt_parser | kg lines, discounts, VAT
+  match: smart_match | exact / fuzzy / new
+  store: SQLite data/lidl.db | products, receipts, items
+  parser -> match -> store
+}
+
+curate: Review in web UI at :5000 {
+  direction: right
+  dash: Dashboard | spending, categories
+  maps: Mappings | search, sort, filter, bulk edit
+  prices: Prices | price history charts
+}
+
+grocy: Send to Grocy, optional {
+  direction: down
+  env: Set GROCY_URL + GROCY_API_KEY
+  linkup: Mappings tab | accept barcode/fuzzy suggestions, set Track or Skip
+  push: Receipt page | preview statuses, Push to Grocy
+  stock: Grocy stock | purchase entries backdated to receipt date
+  env -> linkup -> push -> stock
+}
+
+setup -> receipts
+receipts.fetch -> parse
+receipts.paste -> parse
+receipts.upload -> parse
+parse -> curate
+curate -> grocy

@@ -1,0 +1,11 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-09-25-prices-multicompare-abc.md
+- Setup: same no-git/no-harness rulings as item-page plan (in-place, test_client probes).
+- Pre-flight: T3 consumes T1 `/api/price_history_multi` `{clean:[{d,p,q}]}` and T2 `/api/abc_analysis` `{metric, rows:[{clean,value,cum_pct,class}]}` — match plan text. No conflict.
+- Task 1: complete (/api/price_history_multi 200 dict, empty→{}).
+- Task 2: complete (abc spend 5 rows A-ordered; bogus→spend; top=abc→200).
+- Task 3: complete (/prices 200 with both endpoints; dashboard/mappings/old-api 200 unaffected).
+- Final: self-review (no subagent tool in harness). Single defs verified; plan alignment checked.
+- Final: minor (deferred): brand input on item_new.html is collected but never sent (Grocy product has no brand field; plan silent) — form suggests it does something.
+- Final: Ruling: keep .superpowers workspaces (no git repo, so no history to absorb the record; deleting would destroy the only record) — cost if wrong: small scratch dirs remain.
+- Follow-up (bounded, approved): prices picker → searchable multi dropdown, panel stays open, client-side state; /prices 200, node --check clean.
+- Pre-flight: T3 step 1 deletes `products`/`selected` from `prices()`; prices.html rewrite drops them too. Consistent.
