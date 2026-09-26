@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+<form method="post">
+<h2>Lidl</h2>
+<label>Username <input type="text" name="LIDL_USER" value="{{ v['LIDL_USER'] }}"></label>
+<label>Password <input type="password" name="LIDL_PASS" value=""{% if v['LIDL_PASS_SET'] %} placeholder="saved"{% endif %}></label>
+<h2>Grocy</h2>
+<label>URL <input type="text" name="GROCY_URL" value="{{ v['GROCY_URL'] }}"></label>
+<label>API key <input type="text" name="GROCY_API_KEY" value="{{ v['GROCY_API_KEY'] }}"></label>
+<p><a href="/api/grocy_status">Test Grocy connection</a></p>
+<button type="submit">Save</button>
+</form>
+<p><small>Note: the Lidl password is stored in plaintext in the local SQLite database.</small></p>
+<h2>Users</h2>
+<form method="post" action="{{ url_for('settings_user_add') }}">
+<label>Name <input type="text" name="name"></label>
+<button type="submit">Add user</button>
+</form>
+<ul>
+{% for u in users %}
+<li>{{ u['name'] }}</li>
+{% endfor %}
+</ul>
+<h2>Cards</h2>
+<form method="post" action="{{ url_for('settings_card_link') }}">
+<label>Last 4 <input type="text" name="last4" maxlength="4" pattern="\d{4}"></label>
+<label>User <select name="user_id">
+{% for u in users %}
+<option value="{{ u['id'] }}">{{ u['name'] }}</option>
+{% endfor %}
+</select></label>
+<button type="submit">Link card</button>
+</form>
+<ul>
+{% for c in cards %}
+<li>{{ c['last4'] }} - {{ c['user_name'] }}</li>
+{% endfor %}
+</ul>
+<p><small>Note: Last-4 collisions (two cards sharing digits) map to one user.</small></p>
+{% endblock %}

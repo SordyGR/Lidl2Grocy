@@ -12,6 +12,16 @@ from rapidfuzz import process, fuzz
 
 DEFAULT_CATEGORY = "Misc"
 
+_CARD_RE = re.compile(r"\*+\s*(\d{4})\s*$")
+
+
+def extract_card_last4(text):
+    for line in text.splitlines():
+        m = _CARD_RE.search(line.rstrip())
+        if m:
+            return m.group(1)
+    return None
+
 
 def normalize(text):
     if pd.isna(text):

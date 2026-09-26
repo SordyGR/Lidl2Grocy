@@ -24,6 +24,36 @@ def is_login_redirect(url: str) -> bool:
     return "mre/" not in url and ("login" in url or "sign" in url or "auth" in url)
 
 
+def get_lidl_creds():
+    import settings_store as ss
+    return ss.get("LIDL_USER"), ss.get("LIDL_PASS")
+
+
+def try_auto_login(page) -> bool:
+    user, pw = get_lidl_creds()
+    if not user or not pw:
+        return False
+    try:
+        page.goto(LOGIN_URL)
+        for sel in ('input[type="email"]', 'input[name="email"]', 'input[type="text"]'):
+            try:
+                page.fill(sel, user, timeout=5000)
+                break
+            except Exception:
+                continue
+        for sel in ('input[type="password"]', 'input[name="password"]'):
+            try:
+                page.fill(sel, pw, timeout=5000)
+                break
+            except Exception:
+                continue
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(5000)
+        return not is_login_redirect(page.url)
+    except Exception:
+        return False
+
+
 def wait_for_login(page, timeout_s: int = 300) -> bool:
     """Poll until the user finishes logging in (or timeout/closed page)."""
     import time
@@ -96,16 +126,23 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
             page.goto(HISTORY_URL.format(page=1))
             if is_login_redirect(page.url):
                 if not headed:
-                    print("LOGIN NEEDED \u2014 rerun with --headed and log in once")
-                    return 3
-                print("Waiting for login in the opened browser window (5 min max)...")
-                if not wait_for_login(page):
-                    print("LOGIN NEEDED \u2014 login was not completed in time")
-                    return 3
-                page.goto(HISTORY_URL.format(page=1))
-                if is_login_redirect(page.url):
-                    print("LOGIN NEEDED \u2014 still on the login page, rerun with --headed")
-                    return 3
+                    if try_auto_login(page):
+                        page.goto(HISTORY_URL.format(page=1))
+                        if is_login_redirect(page.url):
+                            print("LOGIN NEEDED \u2014 auto-login failed, rerun with --headed and log in once")
+                            return 3
+                    else:
+                        print("LOGIN NEEDED \u2014 rerun with --headed and log in once")
+                        return 3
+                if headed:
+                    print("Waiting for login in the opened browser window (5 min max)...")
+                    if not wait_for_login(page):
+                        print("LOGIN NEEDED \u2014 login was not completed in time")
+                        return 3
+                    page.goto(HISTORY_URL.format(page=1))
+                    if is_login_redirect(page.url):
+                        print("LOGIN NEEDED \u2014 still on the login page, rerun with --headed")
+                        return 3
             tids = collect_tids(page, max_pages)
             conn = get_db()
             try:

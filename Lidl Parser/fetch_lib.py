@@ -56,7 +56,7 @@ def pick_filename(receipt_dir: str, conn, yy: str, mm: str, dd: str) -> str:
 
 def import_kept_receipt(conn, kept_text: str, filename: str, t_id) -> dict:
     from receipt_parser import (parse_receipt, parse_receipt_date,
-                                smart_match, build_memory)
+                                smart_match, build_memory, extract_card_last4)
     df = parse_receipt(kept_text, filename)
     if df.empty:
         raise ValueError(f"{filename}: no items parsed")
@@ -64,11 +64,12 @@ def import_kept_receipt(conn, kept_text: str, filename: str, t_id) -> dict:
     if abs(parsed_total - extract_total(kept_text)) > 0.02:
         raise ValueError(f"{filename}: total mismatch parsed={parsed_total}")
     iso_date, seq = parse_receipt_date(filename)
+    card_last4 = extract_card_last4(kept_text)
     cur = conn.cursor()
     cur.execute(
-        """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total)
-           VALUES (?, ?, ?, ?, ?)""",
-        (filename, iso_date, seq, len(df), parsed_total))
+        """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (filename, iso_date, seq, len(df), parsed_total, card_last4))
     conn.commit()
     rid = cur.execute("SELECT id FROM receipts WHERE filename=?", (filename,)).fetchone()["id"]
     cur.execute("DELETE FROM items WHERE receipt_id=?", (rid,))
