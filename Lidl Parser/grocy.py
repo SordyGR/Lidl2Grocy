@@ -1,5 +1,4 @@
 """Read-only Grocy API client for Phase 1 product linking."""
-import os
 import time
 import hashlib
 import unicodedata
@@ -25,8 +24,9 @@ class GrocyApiError(Exception):
 
 
 def get_config():
-    base_url = os.environ.get("GROCY_URL", "").strip().rstrip("/")
-    api_key = os.environ.get("GROCY_API_KEY", "").strip()
+    import settings_store as ss
+    base_url = (ss.get("GROCY_URL") or "").strip().rstrip("/")
+    api_key = (ss.get("GROCY_API_KEY") or "").strip()
     if not base_url or not api_key:
         raise GrocyConfigError(CONFIG_HINT)
     return base_url, api_key
