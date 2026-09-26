@@ -61,6 +61,7 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
   const status = document.getElementById('sync-status');
   const lastSync = document.getElementById('last-sync');
   let timer = null;
+  let awaiting = false;  // only reload for a sync started in this page session
   async function refreshStatus() {
     const r = await fetch('/api/fetch_status');
     const s = await r.json();
@@ -73,9 +74,10 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     btn.disabled = false;
     if (s.error) {
       status.textContent = 'Error: ' + s.error;
+      awaiting = false;
     } else if (s.result !== null && s.result !== undefined) {
       status.textContent = 'Done: ' + s.result + ' new/skipped/needs-review';
-      location.reload();
+      if (awaiting) { awaiting = false; location.reload(); }
     }
   }
   btn.addEventListener('click', async () => {
@@ -89,6 +91,7 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
       return;
     }
     status.textContent = 'Syncing…';
+    awaiting = true;
     timer = setInterval(refreshStatus, 3000);
   });
   refreshStatus();
