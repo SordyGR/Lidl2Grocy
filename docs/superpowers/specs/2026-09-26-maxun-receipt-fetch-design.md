@@ -32,12 +32,13 @@ removing A.
 New `Lidl Parser/fetch_maxun.py` — same contract as `fetch_lidl.cmd_sync`
 (exit-code int, prints summary). It differs only in how it obtains text.
 
-- **Orchestrator `run_fetch(source="auto")`** in `fetch_maxun.py`, the single
-  fallback site. Used by `app.py._run_sync()` and by the CLI. `source` in
-  `auto` | `maxun` | `playwright`:
-  - `playwright` → `fetch_lidl.cmd_sync(latest_only=True)` directly.
+- **Orchestrator `run_fetch(source="auto", latest_only=True, max_pages=0)`**
+  in `fetch_maxun.py`, the single fallback site, mirroring
+  `fetch_lidl.cmd_sync`'s signature. Used by `app.py._run_sync()` and by the
+  CLI. `source` in `auto` | `maxun` | `playwright`:
+  - `playwright` → `fetch_lidl.cmd_sync(latest_only, max_pages)` directly.
   - otherwise → try Maxun; on any failure log the reason and fall back to
-    `fetch_lidl.cmd_sync(latest_only=True)`.
+    `fetch_lidl.cmd_sync(latest_only, max_pages)`.
 - **Maxun client** (stdlib `urllib.request`, no new pip dependency):
   - `POST {MAXUN_URL}/api/robots/{MAXUN_ROBOT_ID}/runs`, header
     `x-api-key: {MAXUN_API_KEY}` → `{ runId }` (both routes verified in
@@ -48,11 +49,16 @@ New `Lidl Parser/fetch_maxun.py` — same contract as `fetch_lidl.cmd_sync`
     extracted text field is confirmed against the live instance during
     implementation; the client parses defensively (missing text field =
     failure → fallback).
-- **Robot (lives in Maxun, not this repo):** login step with stored Lidl
-  credentials → `purchase-history?client_id=GreeceRetailClient&country_code=gr&language=el-GR`
-  → scrape-list latest `purchase-detail?t=…` link → scrape receipt container
-  as one text field. Retrained in Maxun's UI; no deploy needed for selector
-  drift.
+- **Robot (lives in Maxun, not this repo):** two logical operations, with a
+  login step using stored Lidl credentials first in both cases —
+  (a) **list:** walk `purchase-history?client_id=GreeceRetailClient&country_code=gr&language=el-GR&page=N`
+  collecting `purchase-detail?...&t=<id>` links (Maxun crawl/scrape-list);
+  (b) **detail:** given one `t=` id, open its detail page and scrape the
+  receipt container as one text field. Whether this is one parameterized
+  robot or two robots is settled against the live instance during
+  implementation (Maxun workflows carry a `params` array; the execute
+  endpoint's input shape is the other half of the §3 open assumption).
+  Retrained in Maxun's UI; no deploy needed for selector drift.
 - **Shared import chain (untouched):** `trim_receipt_text` →
   `receipt_body_date` → `pick_filename` → `import_kept_receipt(conn, kept,
   filename, t_id)`; receipt file written to `receipts/<filename>` exactly as
@@ -75,15 +81,29 @@ Modified:
 ## 4. Data flow
 
 1. Trigger — UI button (`/fetch/run`, unchanged) or cron →
-   `run_fetch(source)`.
-2. If `source == playwright`, jump to step 7.
-3. `POST` run to Maxun, poll to terminal.
-4. Extract raw receipt text + its `t=` id from the run result.
-5. `fetch_state` pre-check on `t_id` (skip if already imported).
-6. Shared chain: trim → date → `pick_filename` → `import_kept_receipt` →
-   write `receipts/<filename>`.
-7. Fallback: `fetch_lidl.cmd_sync(latest_only=True)`.
-8. One summary naming which backend served and why the other was skipped.
+   `run_fetch(source, latest_only, max_pages)`. Daily use passes
+   `latest_only=True`; fresh install / backfill passes `latest_only=False`.
+2. If `source == playwright`, jump to step 8.
+3. `POST` the **list** operation to Maxun, poll to terminal → ordered list of
+   `t=` ids (newest first; `max_pages` caps history pages scanned).
+4. For each `t_id` not in `fetch_state`: `POST` the **detail** operation,
+   poll (bounded per receipt), extract raw receipt text.
+5. Per receipt, shared chain: trim → date → `pick_filename` →
+   `import_kept_receipt` → write `receipts/<filename>`. A per-receipt
+   failure appends to needs-review and continues the loop (mirroring the
+   Playwright `needs` list); it does not abort the sync.
+6. If `latest_only`, stop after the first newly imported receipt.
+7. If the **list** operation itself fails (or Maxun is unreachable /
+   unauthorized), log the reason and jump to step 8 without importing
+   anything from Maxun.
+8. Fallback: `fetch_lidl.cmd_sync(latest_only, max_pages)`.
+9. One summary: `new / skipped / needs-review`, naming which backend served
+   and why the other was skipped.
+
+Why per-receipt runs instead of one big crawl run: small payloads, a failure
+on receipt 30 of 120 doesn't lose the other 119, resume-after-interrupt
+falls out of the `fetch_state` pre-check, and the loop mirrors
+`collect_tids` + `fetch_detail_text` so both backends stay comparable.
 
 ## 5. Error handling & idempotency
 
@@ -98,12 +118,16 @@ Modified:
 - Login expiry on the Maxun side surfaces as run failure → Playwright
   fallback → existing `LOGIN NEEDED` flow if the profile session is also
   dead. No password handling in this repo on either path.
-- Trim/parse failures → receipt not written to DB, listed as needs-review,
-  consistent with current behavior.
-- Known limitation (carried forward): Maxun path is **latest-only**; history
-  backfill stays Playwright-only. Full sync can re-import manually saved
-  receipts under other filenames because `fetch_state` only knows `t_id`s it
-  imported — unchanged by this spec.
+- Trim/parse failures → receipt not written to DB, `t_id` appended to
+  needs-review, loop continues — consistent with current behavior.
+- Fresh-install / full sync (`latest_only=False`) walks the whole history on
+  the Maxun path; resume-after-interrupt is free via the `fetch_state`
+  pre-check. Per-receipt poll bound keeps one slow receipt from stalling the
+  backfill; a receipt that times out lands in needs-review.
+- Known limitation (carried forward, both backends): a full sync can
+  re-import receipts previously saved manually under other filenames, because
+  `fetch_state` only knows `t_id`s it imported. Unchanged by this spec;
+  stick to `--latest-only` for daily use once the backfill is done.
 
 ## 6. Credentials & Maxun hosting
 
@@ -124,17 +148,25 @@ Modified:
 Follow the existing `tests/test_fetch_*.py` pattern (mocked HTTP via
 `urllib`, monkeypatched import chain):
 
-1. Maxun success → shared chain called with trimmed text + `t_id`.
-2. Maxun unreachable → Playwright `cmd_sync` invoked.
-3. Run failed / poll timeout / missing text → fallback invoked.
-4. Trim `ValueError` on Maxun text → fallback invoked.
-5. `FETCH_SOURCE=playwright` → Maxun never contacted.
-6. Live: `--latest-only` output diffed against a known-good `receipts/*.txt`
+1. Maxun latest-only success → shared chain called with trimmed text + `t_id`.
+2. Maxun unreachable → Playwright `cmd_sync` invoked with same flags.
+3. List-operation failure → fallback invoked, nothing imported from Maxun.
+4. Detail-run failed / poll timeout / missing text on receipt 2 of 3 →
+   fallback NOT invoked mid-loop; receipt lands in needs-review, loop
+   continues (fallback only triggers on list-level failure).
+5. Trim `ValueError` on Maxun text → needs-review, loop continues.
+6. `FETCH_SOURCE=playwright` → Maxun never contacted.
+7. Full-sync resume: pre-seeded `fetch_state` with first `t_id` → second run
+   skips it, imports the rest.
+8. Live: `--latest-only` output diffed against a known-good `receipts/*.txt`
    (reference: `26-09-05.txt` → 41.91 €); second run imports 0.
-7. Pre-implementation spike (throwaway): record one receipt robot in Maxun,
-   pull text, run the §7 table from the 2026-09-23 discussion (trim, date,
-   total, `parse_receipt` non-empty, €0.02 reconciliation, byte-diff). The
-   spike decides nothing about code; it validates the raw-text assumption.
+9. Live fresh-install: full sync on a scratch data dir imports the same
+   receipt count and per-receipt totals as the Playwright full sync.
+10. Pre-implementation spike (throwaway): record list + detail operations in
+   Maxun, pull one receipt's text, run the validation table from the
+   2026-09-23 discussion (trim, date, total, `parse_receipt` non-empty,
+   €0.02 reconciliation, byte-diff). The spike decides nothing about code;
+   it validates the raw-text assumption.
 
 ## 8. Rollout
 
@@ -144,6 +176,7 @@ Follow the existing `tests/test_fetch_*.py` pattern (mocked HTTP via
 3. `/settings` UI fields for `FETCH_SOURCE` (default `auto`), `MAXUN_URL`,
    `MAXUN_API_KEY`, `MAXUN_ROBOT_ID`; robot setup steps in README Fetch
    section.
-4. Cron (container or host) invokes the CLI with default `auto` source for
-   unattended runs.
+4. Cron (container or host) invokes the CLI with default `auto` source and
+   `--latest-only` for unattended daily runs; fresh install runs the full
+   sync once (no flag), then switches to `--latest-only`.
 5. Rollback: set `FETCH_SOURCE=playwright` — Maxun code path fully bypassed.
