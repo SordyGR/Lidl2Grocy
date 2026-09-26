@@ -26,8 +26,14 @@ def _run_sync():
     try:
         rc = fetch_lidl.cmd_sync(latest_only=True)
         if isinstance(rc, int) and rc != 0:
-            _FETCH["error"] = ("Lidl login needed — rerun headed once "
-                               "or use the paste fallback")
+            user, pw = fetch_lidl.get_lidl_creds()
+            if not user or not pw:
+                _FETCH["error"] = ("No Lidl credentials saved — enter them "
+                                   "in Settings, then sync again")
+            else:
+                _FETCH["error"] = ("Lidl auto-login failed — Lidl may be blocking "
+                                   "automation; use the paste fallback on the "
+                                   "dashboard")
         else:
             _FETCH["result"] = rc
     except Exception as e:
