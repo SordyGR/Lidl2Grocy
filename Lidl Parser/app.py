@@ -24,7 +24,12 @@ _FETCH_LOCK = threading.Lock()
 
 def _run_sync():
     try:
-        _FETCH["result"] = fetch_lidl.cmd_sync(latest_only=True)
+        rc = fetch_lidl.cmd_sync(latest_only=True)
+        if isinstance(rc, int) and rc != 0:
+            _FETCH["error"] = ("Lidl login needed — rerun headed once "
+                               "or use the paste fallback")
+        else:
+            _FETCH["result"] = rc
     except Exception as e:
         _FETCH["error"] = str(e)[:300]
     finally:
