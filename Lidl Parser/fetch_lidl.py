@@ -19,6 +19,25 @@ DETAIL_URL = ("https://www.lidl-hellas.gr/mre/purchase-detail"
 LOGIN_URL = "https://www.lidl-hellas.gr/user-api/login?step=login&redirect=/"
 PROFILE_DIR = os.path.join(BASE_DIR, "data", ".lidl-profile")
 
+LAST_LOGIN_NOTE = None
+
+
+def launch_context(pw, headed=False):
+    """Persistent Chromium profile with automation fingerprints reduced.
+
+    Lidl's SSO answers headless automation with a generic "system
+    overload" refusal, so we drop the strongest detectable signals:
+    the AutomationControlled blink flag, navigator.webdriver, and the
+    missing window.chrome runtime object.
+    """
+    ctx = pw.chromium.launch_persistent_context(
+        PROFILE_DIR, headless=not headed,
+        args=["--disable-blink-features=AutomationControlled"])
+    ctx.add_init_script(
+        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+        "if (!window.chrome) { window.chrome = {runtime: {}}; }")
+    return ctx
+
 
 def is_login_redirect(url: str) -> bool:
     return "mre/" not in url and ("login" in url or "sign" in url or "auth" in url)
@@ -29,8 +48,11 @@ def get_lidl_creds():
     return ss.get("LIDL_USER"), ss.get("LIDL_PASS")
 
 
-def try_auto_login(page) -> bool:
-    user, pw = get_lidl_creds()
+def try_auto_login(page, user=None, pw=None) -> bool:
+    global LAST_LOGIN_NOTE
+    LAST_LOGIN_NOTE = None
+    if user is None or pw is None:
+        user, pw = get_lidl_creds()
     if not user or not pw:
         return False
     try:
@@ -41,17 +63,73 @@ def try_auto_login(page) -> bool:
                 break
             except Exception:
                 continue
+        # Step 2 of Lidl's login: email first, then an
+        # "ΕΠΟΜΕΝΟ" button reveals the password field.
+        for sel in ('text=ΕΠΟΜΕΝΟ', 'button:has-text("ΕΠΟΜΕΝΟ")',
+                    'button:has-text("Next")', 'button[type="submit"]'):
+            try:
+                page.click(sel, timeout=3000)
+                break
+            except Exception:
+                continue
+        try:
+            page.wait_for_timeout(2000)
+        except Exception:
+            pass
         for sel in ('input[type="password"]', 'input[name="password"]'):
             try:
                 page.fill(sel, pw, timeout=5000)
                 break
             except Exception:
                 continue
-        page.keyboard.press("Enter")
+        # Submit while focus is still in the password field: the page has
+        # several ΕΠΟΜΕΝΟ buttons (incl. a header back button), so a blind
+        # click can hit the wrong one, move focus away, and silently fail.
+        try:
+            page.press('input[type="password"]', 'Enter', timeout=5000)
+        except Exception:
+            pass
         page.wait_for_timeout(5000)
-        return not is_login_redirect(page.url)
+        if not is_login_redirect(page.url):
+            return True
+        for sel in ('button[type="submit"]',
+                    'button:has-text("ΕΠΟΜΕΝΟ"):visible',
+                    'button:has-text("ΣΥΝΔΕΣΗ"):visible'):
+            try:
+                page.click(sel, timeout=3000)
+                break
+            except Exception:
+                continue
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(8000)
+        if not is_login_redirect(page.url):
+            return True
+        try:
+            body = page.inner_text("body") or ""
+        except Exception:
+            body = ""
+        if "Υπερπληρότητα" in body:
+            LAST_LOGIN_NOTE = "overload"
+        return False
     except Exception:
         return False
+
+
+def attempt_login(email: str, pw: str) -> bool:
+    """Headless one-shot login check reusing the persistent profile."""
+    from playwright.sync_api import sync_playwright
+    email = (email or "").strip()
+    if not email or not pw:
+        return False
+    with sync_playwright() as p:
+        context = launch_context(p, headed=False)
+        try:
+            page = context.pages[0] if context.pages else context.new_page()
+            return try_auto_login(page, email, pw)
+        except Exception:
+            return False
+        finally:
+            context.close()
 
 
 def wait_for_login(page, timeout_s: int = 300) -> bool:
@@ -119,8 +197,7 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
     new, skipped = 0, 0
     needs: list = []
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            PROFILE_DIR, headless=not headed)
+        context = launch_context(p, headed=headed)
         page = context.pages[0] if context.pages else context.new_page()
         try:
             page.goto(HISTORY_URL.format(page=1))

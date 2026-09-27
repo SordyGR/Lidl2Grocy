@@ -57,6 +57,25 @@ def test_add_barcode_posts(monkeypatch):
     assert calls["payload"] == {"product_id": 55, "barcode": "520123"}
 
 
+def test_add_barcode_with_qu_id(monkeypatch):
+    import grocy as g
+    calls = {}
+
+    class Resp:
+        status_code = 200
+        text = "ok"
+        def json(self):
+            return {"created_object_id": 9}
+
+    def fake_post(url, headers=None, timeout=None, json=None):
+        calls["payload"] = json
+        return Resp()
+
+    monkeypatch.setattr(g.requests, "post", fake_post)
+    assert g.add_barcode("http://x/api", "k", 55, "520123", qu_id=10) == 9
+    assert calls["payload"] == {"product_id": 55, "barcode": "520123", "qu_id": 10}
+
+
 def test_lookups_cached(monkeypatch):
     import grocy as g
     g._LOOKUPS.update({"key": None, "at": 0.0, "data": None})

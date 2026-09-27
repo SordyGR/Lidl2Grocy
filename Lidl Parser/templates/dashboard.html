@@ -3,6 +3,8 @@
 <h1>Dashboard</h1>
 <div>
   <button id="sync-btn" type="button">Sync receipts</button>
+  <button id="login-btn" type="button" hidden>Log in</button>
+  <a href="/export.csv">Export CSV</a>
   <span id="sync-status"></span>
   <div id="last-sync"></div>
 </div>
@@ -23,7 +25,23 @@
 </div>
 <div class="grid">
 <div><h2>Monthly spend</h2><canvas id="monthly"></canvas></div>
-<div><h2>By category</h2><canvas id="cats"></canvas></div>
+<div><h2>By category</h2>
+<form method="get" id="pieform">
+<select name="pie" onchange="document.getElementById('pieform').submit()">
+<option value="" {% if not pie %}selected{% endif %}>all time</option>
+<option value="this_week" {% if pie=="this_week" %}selected{% endif %}>this week</option>
+<option value="last_week" {% if pie=="last_week" %}selected{% endif %}>last week</option>
+<option value="30d" {% if pie=="30d" %}selected{% endif %}>last 30 days</option>
+<option value="last_month" {% if pie=="last_month" %}selected{% endif %}>last month</option>
+<option value="custom" {% if pie=="custom" %}selected{% endif %}>range…</option>
+</select>
+{% if pie=="custom" %}
+<input type="date" name="from" value="{{ pie_from }}">
+<input type="date" name="to" value="{{ pie_to }}">
+<button>Apply</button>
+{% endif %}
+</form>
+<canvas id="cats"></canvas></div>
 </div>
 <div class="grid">
 <div><h2>Recent receipts</h2>
@@ -58,6 +76,7 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
 <script>
 (function() {
   const btn = document.getElementById('sync-btn');
+  const loginBtn = document.getElementById('login-btn');
   const status = document.getElementById('sync-status');
   const lastSync = document.getElementById('last-sync');
   let timer = null;
@@ -75,6 +94,8 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     if (s.error) {
       status.textContent = 'Error: ' + s.error;
       awaiting = false;
+      const needLogin = /login|auto-login|credential|settings/i.test(s.error);
+      loginBtn.hidden = !needLogin;
     } else if (s.result !== null && s.result !== undefined) {
       status.textContent = 'Done: ' + s.result + ' new/skipped/needs-review';
       if (awaiting) { awaiting = false; location.reload(); }
@@ -93,6 +114,12 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     status.textContent = 'Syncing…';
     awaiting = true;
     timer = setInterval(refreshStatus, 3000);
+  });
+  loginBtn.addEventListener('click', () => {
+    window.open('/fetch/login', 'lidllogin', 'width=440,height=560');
+  });
+  window.addEventListener('message', (e) => {
+    if (e.data === 'lidl-login-ok') btn.click();
   });
   refreshStatus();
 })();

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ p["clean"] or p["raw"] }}</h1>
+<p>
+{% if p["grocy_id"] %}<span>Linked: Grocy #{{ p["grocy_id"] }} {{ p["grocy_name"] or "" }}</span>
+{% else %}<span class="notice-warn">Unlinked</span>{% endif %}
+{% if p["grocy_track"] == 0 %}<span>Skipped for push</span>{% endif %}
+{% if p["needs_review"] %}<span class="notice-err">Needs review</span>{% endif %}
+<span id="abc-badge">ABC: …</span>
+</p>
+<form method="post">
+<table>
+<tr><th>Raw name</th><td>{{ p["raw"] }}</td></tr>
+<tr><th>Clean name</th><td><input name="clean" value="{{ p["clean"] or "" }}" size="40"></td></tr>
+<tr><th>Category</th><td><input name="category" value="{{ p["category"] or "" }}"></td></tr>
+<tr><th>Barcode</th><td><input name="barcode" value="{{ p["barcode"] or "" }}"></td></tr>
+<tr><th>Brand</th><td><input name="brand" value="{{ p["brand"] or "" }}"></td></tr>
+<tr><th>Unit</th><td><select name="unit">
+<option value="">—</option>
+{% for u in units %}<option value="{{ u["name"] }}" {% if u["name"]==p["unit"] %}selected{% endif %}>{{ u["name"] }}</option>{% endfor %}
+</select></td></tr>
+<tr><th>Weight</th><td><input name="weight" value="{{ p["weight"] or "" }}" size="10"></td></tr>
+<tr><th>Notes</th><td><input name="notes" value="{{ p["notes"] or "" }}" size="40"></td></tr>
+<tr><th>Market</th><td><input name="market" value="{{ p["market"] or "" }}" placeholder="{{ p["usual_store"] }}"></td></tr>
+<tr><th>Grocy id</th><td><input name="grocy_id" value="{{ p["grocy_id"] or "" }}" size="6">
+<input name="grocy_name" value="{{ p["grocy_name"] or "" }}" placeholder="Grocy name" size="20">
+{% for s in suggestions %}<button type="submit" name="grocy_id" value="{{ s["grocy_id"] }}">★ #{{ s["grocy_id"] }} {{ s["grocy_name"] }}</button>{% endfor %}
+</td></tr>
+<tr><th>Purchase unit (Grocy)</th><td><select name="purchase_qu_id">
+<option value="">—</option>
+{% for u in units %}{% if u["grocy_id"] %}<option value="{{ u["grocy_id"] }}" {% if u["grocy_id"]==p["purchase_qu_id"] %}selected{% endif %}>{{ u["name"] }}</option>{% endif %}{% endfor %}
+</select></td></tr>
+<tr><th>Factor to stock</th><td><input name="qu_factor" value="{{ p["qu_factor"] or "" }}" size="8" placeholder="e.g. 200"></td></tr>
+<tr><th>Track for push</th><td><input type="checkbox" name="grocy_track" value="1" {% if p["grocy_track"] != 0 %}checked{% endif %}></td></tr>
+</table>
+<button>Save</button>
+<button formaction="?next=1" formmethod="post">Save &amp; next unreviewed</button>
+</form>
+<h2>Price history</h2>
+<canvas id="trend"></canvas>
+<h2>Found in {{ receipts|length }} receipt(s)</h2>
+<table><tr><th>Date</th><th>File</th><th>Qty</th><th>Price</th></tr>
+{% for r in receipts %}<tr><td>{{ r["receipt_date"] }}</td>
+<td><a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a></td>
+<td>{{ r["qty"] }}</td><td>{{ "%.2f"|format(r["final"]) }}</td></tr>{% endfor %}
+</table>
+<p><a href="/products">← Products</a></p>
+<script>
+(function(){
+  var clean = {{ p["clean"]|tojson }};
+  fetch("/api/price_history?clean=" + encodeURIComponent(clean)).then(function(r){ return r.json(); }).then(function(j){
+    var pts = (j.live || []).concat(j.legacy || []);
+    new Chart(document.getElementById("trend"), {type: "line",
+      data: {labels: pts.map(function(x){ return x.d; }), datasets: [{data: pts.map(function(x){ return x.p; }), spanGaps: true}]},
+      options: {plugins: {legend: {display: false}}}});
+  });
+  fetch("/api/abc_analysis?metric=spend&top=50").then(function(r){ return r.json(); }).then(function(j){
+    var hit = (j.rows || []).find(function(x){ return x.clean === clean; });
+    document.getElementById("abc-badge").textContent = "ABC: " + (hit ? hit.class : "–");
+  });
+})();
+</script>
+{% endblock %}

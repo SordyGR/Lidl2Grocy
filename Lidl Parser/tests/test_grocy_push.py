@@ -310,7 +310,7 @@ def test_mappings_shows_track_toggle(tmp_path, monkeypatch):
     monkeypatch.setenv("GROCY_API_KEY", "k")
     appmod.app.testing = True
     c = appmod.app.test_client()
-    r = c.get("/mappings")
+    r = c.get("/products")
     assert r.status_code == 200
     assert "mappings/track" in r.get_data(as_text=True)
 
@@ -352,12 +352,19 @@ def test_preview_converts_to_stock_units(tmp_path, monkeypatch):
     catalog = {"products": [{"id": 7, "name": "Milk"}], "by_id": {7: {"id": 7, "name": "Milk"}},
                "names": ["Milk"], "barcode_to_ids": {}, "cached_at": 0, "stale": False}
     monkeypatch.setattr(g, "fetch_catalog", lambda *a: catalog)
-    monkeypatch.setattr(g, "get_product_details", lambda *a: {
-        "qu_conversion_factor_purchase_to_stock": 200.0,
-        "default_quantity_unit_purchase": {"id": 10, "name": "Piece"}})
+
+    def _no_live_details(*a):
+        raise AssertionError("push must use stored factors, not live details")
+
+    monkeypatch.setattr(g, "get_product_details", _no_live_details)
     monkeypatch.setenv("GROCY_URL", "http://x/api")
     monkeypatch.setenv("GROCY_API_KEY", "k")
     rid = _seed_receipt(dbmod, catalog)
+    conn = dbmod.get_db()
+    conn.execute("UPDATE products SET qu_factor=200.0, purchase_qu_id=10 WHERE raw='MILK'")
+    conn.execute("INSERT OR IGNORE INTO units (grocy_id, name, source) VALUES (10, 'Piece', 'grocy')")
+    conn.commit()
+    conn.close()
     appmod.app.testing = True
     c = appmod.app.test_client()
     r = c.get(f"/receipts/{rid}/grocy-preview", headers={"Accept": "application/json"})
@@ -375,7 +382,7 @@ def test_converted_price_keeps_full_precision(tmp_path, monkeypatch):
     conn = dbmod.get_db()
     conn.execute("INSERT INTO receipts (filename, receipt_date) VALUES ('r.txt','2026-09-05')")
     rid = conn.execute("SELECT id FROM receipts WHERE filename='r.txt'").fetchone()["id"]
-    conn.execute("INSERT INTO products (raw, clean, grocy_id, grocy_name, grocy_track) VALUES ('CHEESE','Cheese',7,'Cheese',1)")
+    conn.execute("INSERT INTO products (raw, clean, grocy_id, grocy_name, grocy_track, qu_factor) VALUES ('CHEESE','Cheese',7,'Cheese',1,200.0)")
     conn.execute("""INSERT INTO items (receipt_id, raw, clean, qty, unit_price, discount, total, final)
                     VALUES (?, 'CHEESE','Cheese',1,2.39,0.0,2.39,2.39)""", (rid,))
     conn.commit()
@@ -385,7 +392,11 @@ def test_converted_price_keeps_full_precision(tmp_path, monkeypatch):
     catalog = {"products": [{"id": 7, "name": "Cheese"}], "by_id": {7: {"id": 7, "name": "Cheese"}},
                "names": ["Cheese"], "barcode_to_ids": {}, "cached_at": 0, "stale": False}
     monkeypatch.setattr(g, "fetch_catalog", lambda *a: catalog)
-    monkeypatch.setattr(g, "get_product_details", lambda *a: {"qu_conversion_factor_purchase_to_stock": 200.0})
+
+    def _no_live_details(*a):
+        raise AssertionError("push must use stored factors, not live details")
+
+    monkeypatch.setattr(g, "get_product_details", _no_live_details)
     monkeypatch.setenv("GROCY_URL", "http://x/api")
     monkeypatch.setenv("GROCY_API_KEY", "k")
     appmod.app.testing = True
@@ -473,3 +484,84 @@ def test_push_aborts_when_grocy_down(tmp_path, monkeypatch):
     after = conn.execute("SELECT pushed_count FROM grocy_pushes WHERE receipt_id=?", (rid,)).fetchone()["pushed_count"]
     conn.close()
     assert after == before == 5
+
+
+def test_push_uses_stored_per_raw_factor(tmp_path, monkeypatch):
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / "pf.db"))
+    dbmod.init_db()
+    import app as appmod
+    import grocy as g
+    catalog = {"products": [{"id": 7, "name": "Milk"}], "by_id": {7: {"id": 7, "name": "Milk"}},
+               "names": ["Milk"], "barcode_to_ids": {}, "cached_at": 0, "stale": False}
+    monkeypatch.setattr(g, "fetch_catalog", lambda *a: catalog)
+
+    def _must_not_call(*a):
+        raise AssertionError("push must use stored factors, not live details")
+
+    monkeypatch.setattr(g, "get_product_details", _must_not_call)
+    monkeypatch.setenv("GROCY_URL", "http://x/api")
+    monkeypatch.setenv("GROCY_API_KEY", "k")
+    conn = dbmod.get_db()
+    conn.execute("INSERT INTO receipts (filename, receipt_date) VALUES ('r.txt','2026-09-05')")
+    rid = conn.execute("SELECT id FROM receipts WHERE filename='r.txt'").fetchone()["id"]
+    conn.execute("INSERT INTO products (raw, clean, grocy_id, grocy_name, qu_factor) VALUES ('MILK','Milk',7,'Milk',1)")
+    conn.execute("INSERT INTO products (raw, clean, grocy_id, grocy_name, qu_factor) VALUES ('MINI','Milk mini',7,'Milk',200)")
+    conn.execute("INSERT INTO items (receipt_id, raw, clean, qty, unit_price, discount, total, final) VALUES (?, 'MILK','Milk',2,1.29,0,2.58,2.58)", (rid,))
+    conn.execute("INSERT INTO items (receipt_id, raw, clean, qty, unit_price, discount, total, final) VALUES (?, 'MINI','Milk mini',2,0.50,0,1.00,1.00)", (rid,))
+    conn.commit()
+    conn.close()
+    appmod.app.testing = True
+    c = appmod.app.test_client()
+    r = c.get(f"/receipts/{rid}/grocy-preview", headers={"Accept": "application/json"})
+    assert r.status_code == 200
+    by_raw = {i["raw"]: i for i in r.get_json()["items"]}
+    assert by_raw["MILK"]["amount"] == 2.0
+    assert by_raw["MINI"]["amount"] == 400.0
+    assert by_raw["MINI"]["price"] == 1.00 / 400.0
+
+
+def test_link_prefills_factor_from_grocy(tmp_path, monkeypatch):
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / "lp.db"))
+    dbmod.init_db()
+    conn = dbmod.get_db()
+    conn.execute("INSERT INTO products (raw, clean) VALUES ('RAW9','Clean 9')")
+    conn.commit()
+    conn.close()
+    import app as appmod
+    import grocy as g
+    catalog = {"products": [{"id": 7, "name": "Milk"}], "by_id": {7: {"id": 7, "name": "Milk"}},
+               "names": ["Milk"], "barcode_to_ids": {}, "cached_at": 0, "stale": False}
+    monkeypatch.setattr(g, "fetch_catalog", lambda *a: catalog)
+    monkeypatch.setattr(g, "get_product_details", lambda *a: {
+        "qu_conversion_factor_purchase_to_stock": 200.0, "qu_id_purchase": 10,
+        "default_quantity_unit_purchase": {"id": 10, "name": "Piece"}})
+    monkeypatch.setenv("GROCY_URL", "http://x/api")
+    monkeypatch.setenv("GROCY_API_KEY", "k")
+    appmod.app.testing = True
+    c = appmod.app.test_client()
+    c.post("/mappings/link", data={"raw": "RAW9", "grocy_id": "7", "grocy_name": "Milk", "_q": ""})
+    conn = dbmod.get_db()
+    row = conn.execute("SELECT qu_factor, purchase_qu_id FROM products WHERE raw='RAW9'").fetchone()
+    conn.close()
+    assert row["qu_factor"] == 200.0 and row["purchase_qu_id"] == 10
+
+
+def test_save_barcode_falls_back_without_qu_id(tmp_path, monkeypatch):
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / "bc.db"))
+    dbmod.init_db()
+    import app as appmod
+    import grocy as g
+    calls = []
+
+    def fake_add(base_url, api_key, pid, barcode, qu_id=None):
+        calls.append(qu_id)
+        if qu_id is not None:
+            raise g.GrocyApiError(400, "unknown field qu_id")
+        return 9
+
+    monkeypatch.setattr(g, "add_barcode", fake_add)
+    assert appmod._save_barcode("http://x/api", "k", 7, "520123", 10) == (9, False)
+    assert calls == [10, None]

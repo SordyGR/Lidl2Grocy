@@ -49,8 +49,8 @@ def test_mappings_sorts_by_clean(tmp_path, monkeypatch):
     monkeypatch.delenv("GROCY_API_KEY", raising=False)
     appmod.app.testing = True
     c = appmod.app.test_client()
-    asc = c.get("/mappings?sort=clean&dir=asc").get_data(as_text=True)
-    desc = c.get("/mappings?sort=clean&dir=desc").get_data(as_text=True)
+    asc = c.get("/products?sort=clean&dir=asc").get_data(as_text=True)
+    desc = c.get("/products?sort=clean&dir=desc").get_data(as_text=True)
     assert asc.index('value="RA"') < asc.index('value="RB"') < asc.index('value="RC"')
     assert desc.index('value="RC"') < desc.index('value="RB"') < desc.index('value="RA"')
 
@@ -63,7 +63,7 @@ def test_mappings_rejects_bad_sort(tmp_path, monkeypatch):
     import app as appmod
     appmod.app.testing = True
     c = appmod.app.test_client()
-    r = c.get("/mappings?sort=grocy_track;DROP&dir=sideways")
+    r = c.get("/products?sort=grocy_track;DROP&dir=sideways")
     assert r.status_code == 200
     assert "Apple" in r.get_data(as_text=True)
 
@@ -81,13 +81,13 @@ def test_mappings_filters(tmp_path, monkeypatch):
     monkeypatch.delenv("GROCY_API_KEY", raising=False)
     appmod.app.testing = True
     c = appmod.app.test_client()
-    cat = c.get("/mappings?cat=Food").get_data(as_text=True)
+    cat = c.get("/products?cat=Food").get_data(as_text=True)
     assert 'value="RA"' in cat and 'value="RC"' not in cat
-    linked = c.get("/mappings?grocy=linked").get_data(as_text=True)
+    linked = c.get("/products?grocy=linked").get_data(as_text=True)
     assert 'value="RB"' in linked and 'value="RA"' not in linked
-    unlinked = c.get("/mappings?grocy=unlinked").get_data(as_text=True)
+    unlinked = c.get("/products?grocy=unlinked").get_data(as_text=True)
     assert 'value="RA"' in unlinked and 'value="RB"' not in unlinked
-    skipped = c.get("/mappings?track=skipped").get_data(as_text=True)
+    skipped = c.get("/products?track=skipped").get_data(as_text=True)
     assert 'value="RC"' in skipped and 'value="RA"' not in skipped
 
 

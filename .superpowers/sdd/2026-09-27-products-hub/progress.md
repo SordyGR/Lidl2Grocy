@@ -1,0 +1,27 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-09-27-products-hub.md
+
+- Setup: working in place on main (repo convention from all prior sessions; uncommitted login work present, untouched). No worktree per project history.
+- Setup: plan + spec read (authored both this session). TDD skill already loaded and governs all tasks.
+- Pre-flight: no shared interfaces. Rows checked: T2 consumes grnorm/units (T1 produces — names match); T3 consumes units cache + product id (T1/T2 produce — match); T4 consumes purchase_qu_id/qu_factor (T1 produces — match); T5 consumes units table + fetch_lookups (existing + T1 — match); T6/T7 consume existing tables only. No conflicts, no rulings.
+- Tasks: 1 model → 2 hub → 3 mini-page → 4 push → 5 units → 6 export → 7 pie. Full `python -m pytest -q` from `Lidl Parser/` per task, no commit steps (repo convention).
+- Task 1: complete (tests: `python -m pytest -q` → 97/97 pass). Ruling: stub test written before implementation (TDD order over plan's step order — same content). Note: one self-healing fix — stray `"""` while adding units DDL, caught by collection error, fixed immediately.
+- Task 2: complete (tests: `python -m pytest -q` → 101/101 pass). Ruling: live search implemented as debounced HTML-swap against `/products` (exact server rendering) instead of plan's JSON row re-render — keeps rich per-row forms working; `/api/products` JSON stays as tested API. Cost if wrong: none, both endpoints tested.
+- Task 3: complete (tests: `python -m pytest -q` → 105/105 pass). Note: save-test initially 404'd — missing `conn.commit()` in the test (uncommitted INSERT rolled back on close); production code was correct.
+- Task 4: complete (tests: `python -m pytest -q` → 109/109 pass). Note: two pre-existing tests encoded the old live-details push behavior; updated to the spec §2/§6 stored-factor contract (seed qu_factor, assert no live read).
+- Task 4 live-verify DEFERRED: plan Step 4 asks for live Grocy writes (link raw, post barcode with qu_id) — side effects on the user's Grocy, so not done unasked. Code degrades gracefully (qu_id fallback path unit-tested). Ruling: user runs one link + barcode post and reports accept/reject; if rejected, fallback already covers it. Cost if wrong: none, fallback tested.
+- Task 5: complete (tests: `python -m pytest -q` → 112/112 pass).
+- Task 6: complete (tests: `python -m pytest -q` → 115/115 pass). Note: BOM kept as explicit "\ufeff" escape (not invisible literal); test asserts header after stripping BOM.
+- Task 7: complete (tests: `python -m pytest -q` → 117/117 pass). All plan tasks done.
+- Final review (fresh reviewer subagent): no Critical; 3 Important, all fixed with TDD, suite 120/120:
+  - Final: fixed mini-page untrack silent failure — absence of grocy_track now means 0 (checkbox always renders) — test_mini_page_untrack_saves_zero RED→GREEN.
+  - Final: fixed new-item create bypassing _save_barcode — now posts qu_id best-effort — test_new_item_create_posts_barcode_with_size RED→GREEN.
+  - Final: fixed mini-page barcode never synced — syncs on barcode change only (same value never re-posts) — test_mini_page_barcode_change_syncs_grocy RED→GREEN.
+- Final: minor (deferred): mapping_update (hub inline edit) lacks new fields market/purchase_qu_id/qu_factor.
+- Final: minor (deferred): export grocy_status never emits 'skipped' (pushed/unpushed only).
+- Final: minor (deferred): market DEFAULT 'Lidl' backfills old rows, defeating blank-means-derived for them.
+- Final: minor (deferred): invalid custom pie range silently falls back to 180d window, no flash (spec §9 default wins over plan's 30d+flash).
+- Final: minor (deferred): Grocy unit name colliding with local seed is silently skipped; possible duplicate dropdown entries.
+- Final: minor (deferred): spec §7 "remap hint" for unmatched legacy unit text not implemented (values keep working).
+- Final: minor (deferred): _prefill_qu overwrites curated factor on relink.
+- Final: minor (deferred): export cells starting with =,+,-,@ could become live Excel formulas (prefix with ').
+- Workspace kept (not deleted): no commits by repo convention, so the ledger is the only record.

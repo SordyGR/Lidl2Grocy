@@ -12,6 +12,13 @@
 <button type="submit">Save</button>
 </form>
 <p><small>Note: the Lidl password is stored in plaintext in the local SQLite database.</small></p>
+<h2>Units</h2>
+<form method="post" action="{{ url_for('settings_units_refresh') }}">
+<button>Refresh from Grocy</button>
+</form>
+<table><tr><th>Name</th><th>Grocy id</th><th>Source</th></tr>
+{% for u in units %}<tr><td>{{ u['name'] }}</td><td>{{ u['grocy_id'] or '' }}</td><td>{{ u['source'] }}</td></tr>{% endfor %}
+</table>
 <h2>Users</h2>
 <form method="post" action="{{ url_for('settings_user_add') }}">
 <label>Name <input type="text" name="name"></label>
