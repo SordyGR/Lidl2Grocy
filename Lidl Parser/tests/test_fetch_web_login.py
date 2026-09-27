@@ -133,7 +133,7 @@ def test_dashboard_wires_container_browser_login(tmp_path, monkeypatch):
     # The login button opens the container's persistent browser viewer, then
     # starts a headed sync so the user's Lidl session is stored in Docker.
     assert "/browser/vnc.html?autoconnect=true" in body
-    assert "path=%2Fbrowser%2Fws" in body
+    assert "path=%2Fwebsockify" in body
     assert "headed: '1'" in body
 
 

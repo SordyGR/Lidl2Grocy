@@ -108,7 +108,7 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
   const containerBrowser = {{ container_browser|tojson }};
   loginBtn.addEventListener('click', async () => {
     if (containerBrowser) {
-      const pop = window.open('/browser/vnc.html?autoconnect=true&resize=scale&path=%2Fbrowser%2Fws',
+      const pop = window.open('/browser/vnc.html?autoconnect=true&resize=scale&path=%2Fwebsockify',
                               'lidl-container-browser', 'width=1100,height=800');
       if (!pop) { status.textContent = 'Popup blocked — allow popups, then retry.'; return; }
     }

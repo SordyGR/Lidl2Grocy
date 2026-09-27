@@ -20,7 +20,7 @@ fi
 
 fluxbox -display "$DISPLAY" >/tmp/fluxbox.log 2>&1 &
 x11vnc -display "$DISPLAY" -forever -shared -localhost -rfbport 5900 -nopw -noxdamage &
-websockify 6080 127.0.0.1:5900 &
+websockify --verbose 6080 127.0.0.1:5900 &
 
 python migrate.py
 gunicorn -w 1 --threads 4 -b 127.0.0.1:5091 app:app &
