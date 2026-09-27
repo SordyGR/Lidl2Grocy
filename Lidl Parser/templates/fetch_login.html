@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in</title>
+<style>body{font-family:sans-serif;max-width:360px;margin:2em auto;padding:0 1em}label{display:block;margin:.6em 0}input[type=text],input[type=password]{width:100%;padding:.4em}button{padding:.5em 1em}#msg{min-height:1.5em;color:#a00}</style>
+</head>
+<body>
+<h1>Sign in</h1>
+<p id="msg"></p>
+<form id="login-form" method="post" action="/fetch/login">
+  <label>Email <input type="text" name="email" value="{{ email }}" autocomplete="username"></label>
+  <label>Password <input type="password" name="password" autocomplete="current-password"></label>
+  <label><input type="checkbox" name="save" value="on" checked> Save credentials</label>
+  <button type="submit">Continue</button>
+</form>
+<script>
+(function() {
+  const form = document.getElementById('login-form');
+  const msg = document.getElementById('msg');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    msg.textContent = 'Signing in…';
+    const r = await fetch('/fetch/login', {method: 'POST', body: new FormData(form)});
+    let j = {};
+    try { j = await r.json(); } catch (_) {}
+    if (r.ok && j.ok) {
+      msg.textContent = 'Signed in. You can close this window.';
+      try { window.opener.postMessage('lidl-login-ok', '*'); } catch (_) {}
+      setTimeout(() => window.close(), 800);
+    } else {
+      msg.textContent = (j && j.error) || 'Sign-in failed. Check email/password and retry.';
+    }
+  });
+})();
+</script>
+</body>
+</html>

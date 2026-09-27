@@ -1,10 +1,21 @@
 """SQLite schema + helpers for Lidl Parser DB upgrade."""
 import os
 import sqlite3
+import unicodedata
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "lidl.db")
+
+UNIT_SEED = ["Τεμάχιο", "Κιλό", "Γραμμάριο", "Λίτρο", "ml", "Πακέτο", "Κουτί", "Φιάλη"]
+
+
+def grnorm(s):
+    """Greek-insensitive compare key: strip accents, casefold. Α=α=ά, ι=ί=ϊ=ΐ."""
+    if s is None:
+        return ""
+    bare = "".join(c for c in unicodedata.normalize("NFD", str(s)) if unicodedata.category(c) != "Mn")
+    return bare.casefold()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS products (
@@ -76,6 +87,13 @@ CREATE TABLE IF NOT EXISTS grocy_pushes (
     skipped_count INTEGER DEFAULT 0,
     errors TEXT DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS units (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    grocy_id INTEGER UNIQUE,
+    name TEXT UNIQUE NOT NULL,
+    source TEXT DEFAULT 'local',
+    cached_at TEXT DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT DEFAULT ''
@@ -102,6 +120,7 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.create_function("grnorm", 1, grnorm)
     return conn
 
 
@@ -113,6 +132,10 @@ def init_db():
         ("grocy_name", "ALTER TABLE products ADD COLUMN grocy_name TEXT"),
         ("grocy_synced_at", "ALTER TABLE products ADD COLUMN grocy_synced_at TEXT"),
         ("grocy_track", "ALTER TABLE products ADD COLUMN grocy_track INTEGER DEFAULT 1"),
+        ("purchase_qu_id", "ALTER TABLE products ADD COLUMN purchase_qu_id INTEGER"),
+        ("qu_factor", "ALTER TABLE products ADD COLUMN qu_factor REAL"),
+        ("market", "ALTER TABLE products ADD COLUMN market TEXT DEFAULT 'Lidl'"),
+        ("needs_review", "ALTER TABLE products ADD COLUMN needs_review INTEGER DEFAULT 0"),
     ):
         have = [r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()]
         if col not in have:
@@ -120,6 +143,8 @@ def init_db():
     receipts_have = [r[1] for r in conn.execute("PRAGMA table_info(receipts)").fetchall()]
     if "card_last4" not in receipts_have:
         conn.execute("ALTER TABLE receipts ADD COLUMN card_last4 TEXT")
+    for seed in UNIT_SEED:
+        conn.execute("INSERT OR IGNORE INTO units (name, source) VALUES (?, 'local')", (seed,))
     conn.execute("CREATE INDEX IF NOT EXISTS idx_products_grocy ON products(grocy_id)")
     conn.commit()
     conn.close()

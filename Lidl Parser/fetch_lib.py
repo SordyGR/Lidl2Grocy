@@ -84,6 +84,8 @@ def import_kept_receipt(conn, kept_text: str, filename: str, t_id) -> dict:
             (rid, item["Product"], clean, cat, float(item["Qty"]),
              float(item["Unit Price"]), float(item["VAT"]), float(item["Discount"]),
              round(tot, 2), round(tot - float(item["Discount"]), 2), mtype, float(score)))
+        cur.execute("""INSERT OR IGNORE INTO products (raw, clean, category, needs_review)
+                       VALUES (?,?,?,1)""", (item["Product"], clean, cat))
     if t_id is not None:
         cur.execute("INSERT OR IGNORE INTO fetch_state (t_id, filename) VALUES (?, ?)", (t_id, filename))
     conn.commit()

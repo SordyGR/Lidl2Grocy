@@ -241,9 +241,11 @@ def fetch_lookups(base_url, api_key):
     return data
 
 
-def add_barcode(base_url, api_key, product_id, barcode):
-    data = _post(base_url, api_key, "/objects/product_barcodes",
-                 {"product_id": int(product_id), "barcode": str(barcode).strip()})
+def add_barcode(base_url, api_key, product_id, barcode, qu_id=None):
+    payload = {"product_id": int(product_id), "barcode": str(barcode).strip()}
+    if qu_id is not None:
+        payload["qu_id"] = int(qu_id)
+    data = _post(base_url, api_key, "/objects/product_barcodes", payload)
     return int(data.get("created_object_id"))
 
 

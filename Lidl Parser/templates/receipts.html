@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Receipts</h1>
+<p><a href="/export.csv">Export CSV (last 30 days)</a></p>
 <table><tr><th>Date</th><th>File</th><th>Items</th><th>Total €</th></tr>
 {% for r in rows %}<tr><td>{{ r["receipt_date"] }}</td>
 <td><a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a></td>

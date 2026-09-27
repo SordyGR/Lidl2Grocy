@@ -1,14 +1,18 @@
 """Flask browser frontend for Lidl Parser (SQLite). Run: python app.py -> http://127.0.0.1:5000"""
 import os
 import sys
+import csv
+import io
 import sqlite3
 import threading
+import time
+from datetime import date, timedelta
 import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session, Response
 from db import init_db, get_db
 from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory, extract_card_last4
 import grocy as grocy_client
@@ -20,6 +24,10 @@ app.secret_key = "lidl-local-dev"
 
 _FETCH = {"running": False, "result": None, "error": None}
 _FETCH_LOCK = threading.Lock()
+_LOGIN = {"running": False}
+_LOGIN_LOCK = threading.Lock()
+_LOGIN_COOLDOWN_UNTIL = 0.0
+LOGIN_COOLDOWN_S = 30 * 60
 
 
 def _run_sync():
@@ -44,6 +52,9 @@ def _run_sync():
 
 @app.route("/fetch/run", methods=["POST"])
 def fetch_run():
+    with _LOGIN_LOCK:
+        if _LOGIN["running"]:
+            return jsonify({"started": False, "reason": "login in progress"})
     with _FETCH_LOCK:
         if _FETCH["running"]:
             return jsonify({"started": False, "reason": "already running"})
@@ -59,6 +70,49 @@ def api_fetch_status():
     conn.close()
     return jsonify({"running": _FETCH["running"], "result": _FETCH["result"],
                     "error": _FETCH["error"], "last_sync": last})
+
+
+@app.route("/fetch/login", methods=["GET", "POST"])
+def fetch_login():
+    if request.method == "GET":
+        return render_template("fetch_login.html",
+                               email=app_settings.get("LIDL_USER") or "")
+    email = (request.form.get("email") or "").strip()
+    pw = request.form.get("password") or ""
+    save = request.form.get("save") == "on"
+    if not email or not pw:
+        return jsonify({"ok": False, "error": "Email and password required"}), 401
+    global _LOGIN_COOLDOWN_UNTIL
+    now = time.time()
+    if now < _LOGIN_COOLDOWN_UNTIL:
+        wait_min = int((_LOGIN_COOLDOWN_UNTIL - now) / 60) + 1
+        return jsonify({"ok": False,
+                        "error": f"Lidl asked us to wait — retry in about {wait_min} min, only once."}), 429
+    with _LOGIN_LOCK:
+        if _LOGIN["running"]:
+            return jsonify({"ok": False, "error": "Login already in progress"}), 409
+        if _FETCH["running"]:
+            return jsonify({"ok": False, "error": "Sync in progress — try again when it finishes"}), 409
+        _LOGIN["running"] = True
+    try:
+        try:
+            ok = fetch_lidl.attempt_login(email, pw)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:200]}), 401
+        if not ok:
+            if getattr(fetch_lidl, "LAST_LOGIN_NOTE", None) == "overload":
+                _LOGIN_COOLDOWN_UNTIL = time.time() + LOGIN_COOLDOWN_S
+                return jsonify({"ok": False,
+                                "error": "Lidl is temporarily refusing automated sign-in "
+                                         "(system overload). Wait about 30 min, then try once."}), 429
+            return jsonify({"ok": False, "error": "Sign-in failed. Check email/password and retry."}), 401
+        if save:
+            app_settings.set("LIDL_USER", email)
+            app_settings.set("LIDL_PASS", pw)
+        return jsonify({"ok": True})
+    finally:
+        with _LOGIN_LOCK:
+            _LOGIN["running"] = False
 
 
 @app.route("/fetch/paste", methods=["POST"])
@@ -133,10 +187,19 @@ def dashboard():
         WHERE r.receipt_date IS NOT NULL
         GROUP BY m ORDER BY m
     """)
-    by_cat = query("""
-        SELECT COALESCE(category,'Misc') AS c, ROUND(SUM(final),2) AS total
-        FROM items GROUP BY c ORDER BY total DESC LIMIT 12
-    """)
+    pie, frm, to = _pie_bounds(request.args.get("pie", ""), request.args.get("from", ""), request.args.get("to", ""))
+    if frm and to:
+        by_cat = query("""
+            SELECT COALESCE(category,'Misc') AS c, ROUND(SUM(final),2) AS total
+            FROM items i JOIN receipts r ON r.id=i.receipt_id
+            WHERE r.receipt_date BETWEEN ? AND ?
+            GROUP BY c ORDER BY total DESC LIMIT 12
+        """, (frm, to))
+    else:
+        by_cat = query("""
+            SELECT COALESCE(category,'Misc') AS c, ROUND(SUM(final),2) AS total
+            FROM items GROUP BY c ORDER BY total DESC LIMIT 12
+        """)
     recent = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC LIMIT 10")
     top = query("""
         SELECT clean, COUNT(*) AS n, ROUND(SUM(final),2) AS total
@@ -151,13 +214,81 @@ def dashboard():
     """)
     return render_template("dashboard.html", k=kpis, monthly=monthly,
                            by_cat=by_cat, recent=recent, top=top,
-                           user_totals=user_totals)
+                           user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "")
+
+
+def _pie_bounds(pie, frm, to):
+    """Dashboard pie presets → (pie_key, from_iso, to_iso). Empty bounds = all time."""
+    today = date.today()
+    if pie == "this_week":
+        monday = today - timedelta(days=today.isoweekday() - 1)
+        return pie, str(monday), str(today)
+    if pie == "last_week":
+        monday = today - timedelta(days=today.isoweekday() - 1)
+        return pie, str(monday - timedelta(days=7)), str(monday - timedelta(days=1))
+    if pie == "30d":
+        return pie, str(today - timedelta(days=29)), str(today)
+    if pie == "last_month":
+        first = today.replace(day=1)
+        prev_end = first - timedelta(days=1)
+        return pie, str(prev_end.replace(day=1)), str(prev_end)
+    if pie == "custom":
+        if not frm or not to:
+            return pie, str(today - timedelta(days=179)), str(today)
+        try:
+            date.fromisoformat(frm)
+            date.fromisoformat(to)
+        except ValueError:
+            return pie, str(today - timedelta(days=179)), str(today)
+        if frm <= to:
+            return pie, frm, to
+        return pie, str(today - timedelta(days=179)), str(today)
+    return "", "", ""
 
 
 @app.route("/receipts")
 def receipts():
     rows = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC")
     return render_template("receipts.html", rows=rows)
+
+
+@app.route("/export.csv")
+def export_csv():
+    today = date.today()
+    frm = request.args.get("from", str(today - timedelta(days=29)))
+    to = request.args.get("to", str(today))
+    try:
+        date.fromisoformat(frm)
+        date.fromisoformat(to)
+    except ValueError:
+        return "Bad date (use YYYY-MM-DD)", 400
+    rows = query("""
+        SELECT r.receipt_date AS receipt_date, r.filename AS filename, r.store AS store,
+               i.raw AS raw, i.clean AS clean, i.category AS category, i.qty AS qty,
+               p.unit AS unit, i.unit_price AS unit_price, i.discount AS discount, i.final AS final,
+               r.card_last4 AS card_last4, u.name AS payer,
+               (SELECT GROUP_CONCAT(u2.name || ':' || s.share, ';')
+                FROM item_splits s JOIN users u2 ON u2.id = s.user_id
+                WHERE s.item_id = i.id) AS splits,
+               CASE WHEN g.pushed_count > 0 THEN 'pushed' ELSE 'unpushed' END AS grocy_status
+        FROM items i JOIN receipts r ON r.id = i.receipt_id
+        LEFT JOIN products p ON p.raw = i.raw
+        LEFT JOIN card_map c ON c.last4 = r.card_last4
+        LEFT JOIN users u ON u.id = c.user_id
+        LEFT JOIN grocy_pushes g ON g.receipt_id = r.id
+        WHERE r.receipt_date BETWEEN ? AND ?
+        ORDER BY r.receipt_date, r.filename, i.id
+    """, (frm, to))
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["receipt_date", "filename", "store", "raw", "clean", "category", "qty", "unit",
+                "unit_price", "discount", "final", "card_last4", "payer", "splits", "grocy_status"])
+    for x in rows:
+        w.writerow([x["receipt_date"], x["filename"], x["store"], x["raw"], x["clean"], x["category"],
+                    x["qty"], x["unit"] or "", x["unit_price"], x["discount"], x["final"],
+                    x["card_last4"] or "", x["payer"] or "", x["splits"] or "", x["grocy_status"]])
+    return Response("\ufeff" + buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=export_{frm}_{to}.csv"})
 
 
 @app.route("/upload", methods=["GET", "POST"])
@@ -206,28 +337,18 @@ def upload():
     return render_template("upload.html")
 
 
-@app.route("/mappings")
-def mappings():
-    q = request.args.get("q", "").strip()
-    f = request.args.get("filter", "all")
-    cat = request.args.get("cat", "").strip()
-    gf = request.args.get("grocy", "all")
-    tf = request.args.get("track", "all")
-    sort = request.args.get("sort", "raw")
-    if sort not in ("raw", "clean", "category", "barcode"):
-        sort = "raw"
-    direction = request.args.get("dir", "asc")
-    if direction not in ("asc", "desc"):
-        direction = "asc"
-    conn = get_db()
-    sql = "SELECT * FROM products"
+def _product_filters(q, f, cat, gf, tf):
+    """Shared WHERE-clause builder for the Products hub page + JSON API."""
     clauses, args = [], []
     if f == "unmapped":
         # products whose clean equals raw (never curated) OR items with match_type new
         clauses.append("(clean = raw OR clean IS NULL)")
+    elif f == "needs-review":
+        clauses.append("needs_review = 1")
     if q:
-        clauses.append("(raw LIKE ? OR clean LIKE ? OR category LIKE ? OR barcode LIKE ?)")
-        args += [f"%{q}%"] * 4
+        clauses.append("(grnorm(raw) LIKE '%' || grnorm(?) || '%' OR grnorm(clean) LIKE '%' || grnorm(?) || '%' "
+                       "OR grnorm(category) LIKE '%' || grnorm(?) || '%' OR barcode LIKE ?)")
+        args += [q, q, q, f"%{q}%"]
     if cat:
         clauses.append("category = ?")
         args.append(cat)
@@ -239,6 +360,37 @@ def mappings():
         clauses.append("grocy_track != 0")
     elif tf == "skipped":
         clauses.append("grocy_track = 0")
+    return clauses, args
+
+
+@app.route("/mappings")
+def mappings_redirect():
+    qs = request.query_string.decode("utf-8", errors="replace")
+    return redirect("/products" + ("?" + qs if qs else ""), 301)
+
+
+@app.route("/products")
+def products():
+    q = request.args.get("q", "").strip()
+    f = request.args.get("filter", "all")
+    cat = request.args.get("cat", "").strip()
+    gf = request.args.get("grocy", "all")
+    tf = request.args.get("track", "all")
+    sort = request.args.get("sort", "raw")
+    if sort not in ("raw", "clean", "category", "barcode"):
+        sort = "raw"
+    direction = request.args.get("dir", "asc")
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+    try:
+        per = int(request.args.get("per", "100"))
+    except ValueError:
+        per = 100
+    if per not in (25, 50, 100):
+        per = 100
+    conn = get_db()
+    clauses, args = _product_filters(q, f, cat, gf, tf)
+    sql = "SELECT * FROM products"
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
     count = conn.execute(f"SELECT COUNT(*) FROM products" + (" WHERE " + " AND ".join(clauses) if clauses else ""), args).fetchone()[0]
@@ -246,7 +398,7 @@ def mappings():
         page = max(int(request.args.get("page", "1")), 1)
     except ValueError:
         page = 1
-    per_page = 100
+    per_page = per
     pages = max((count + per_page - 1) // per_page, 1)
     page = min(page, pages)
     sql += f" ORDER BY {sort} {direction} LIMIT {per_page} OFFSET {(page - 1) * per_page}"
@@ -296,12 +448,189 @@ def mappings():
         else:
             d["suggestions"] = []
         enriched.append(d)
-    return render_template("mappings.html", rows=enriched, new_items=new_items, q=q, filt=f, cats=cats,
+    return render_template("products.html", rows=enriched, new_items=new_items, q=q, filt=f, cats=cats,
                            grocy_configured=grocy_configured, grocy_names=grocy_names,
                            grocy_error=grocy_error, orphans=sorted(orphans),
-                           sort=sort, direction=direction, cat=cat, gf=gf, tf=tf,
+                           sort=sort, direction=direction, cat=cat, gf=gf, tf=tf, per=per,
                            page=page, pages=pages, count=count, grocy_products=grocy_products,
                            locations=lookups["locations"], quantity_units=lookups["quantity_units"])
+
+
+@app.route("/api/products")
+def api_products():
+    q = request.args.get("q", "").strip()
+    f = request.args.get("filter", "all")
+    cat = request.args.get("cat", "").strip()
+    gf = request.args.get("grocy", "all")
+    tf = request.args.get("track", "all")
+    sort = request.args.get("sort", "raw")
+    if sort not in ("raw", "clean", "category", "barcode"):
+        sort = "raw"
+    direction = request.args.get("dir", "asc")
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+    try:
+        per = int(request.args.get("per", "100"))
+    except ValueError:
+        per = 100
+    if per not in (25, 50, 100):
+        per = 100
+    try:
+        page = max(int(request.args.get("page", "1")), 1)
+    except ValueError:
+        page = 1
+    clauses, args = _product_filters(q, f, cat, gf, tf)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    conn = get_db()
+    count = conn.execute("SELECT COUNT(*) FROM products" + where, args).fetchone()[0]
+    pages = max((count + per - 1) // per, 1)
+    page = min(page, pages)
+    rows = conn.execute(f"SELECT * FROM products{where} ORDER BY {sort} {direction} LIMIT {per} OFFSET {(page - 1) * per}",
+                        args).fetchall()
+    conn.close()
+    return jsonify({"rows": [dict(r) for r in rows], "page": page, "pages": pages, "count": count})
+
+
+@app.route("/products/<int:pid>", methods=["GET", "POST"])
+def product_detail(pid):
+    conn = get_db()
+    p = conn.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
+    if not p:
+        conn.close()
+        return "Not found", 404
+    p = dict(p)
+    if request.method == "POST":
+        form = request.form
+        updates, vals = [], []
+        for key in ("clean", "category", "barcode", "brand", "unit", "weight", "notes", "market", "grocy_name"):
+            if key in form:
+                updates.append(f"{key} = ?")
+                vals.append(form.get(key).strip())
+        gid_raw = form.get("grocy_id", "").strip()
+        if gid_raw:
+            try:
+                gid = int(gid_raw)
+            except ValueError:
+                conn.close()
+                flash("Grocy id must be a number")
+                return redirect(url_for("product_detail", pid=pid))
+            updates.append("grocy_id = ?")
+            vals.append(gid)
+        else:
+            updates.append("grocy_id = NULL")
+        for key in ("purchase_qu_id",):
+            v = (form.get(key) or "").strip()
+            if v:
+                try:
+                    updates.append(f"{key} = ?")
+                    vals.append(int(v))
+                except ValueError:
+                    conn.close()
+                    flash(f"{key} must be a number")
+                    return redirect(url_for("product_detail", pid=pid))
+            else:
+                updates.append(f"{key} = NULL")
+        if "qu_factor" in form:
+            v = (form.get("qu_factor") or "").strip()
+            if v:
+                try:
+                    updates.append("qu_factor = ?")
+                    vals.append(float(v))
+                except ValueError:
+                    conn.close()
+                    flash("Factor must be a number")
+                    return redirect(url_for("product_detail", pid=pid))
+            else:
+                updates.append("qu_factor = NULL")
+        # The track checkbox always renders, so absence means unchecked.
+        updates.append("grocy_track = ?")
+        vals.append(1 if form.get("grocy_track") == "1" else 0)
+        updates.append("needs_review = 0")
+        updates.append("updated_at = datetime('now')")
+        vals.append(pid)
+        conn.execute(f"UPDATE products SET {', '.join(updates)} WHERE id=?", vals)
+        if gid_raw and not (form.get("qu_factor") or "").strip() and not (form.get("purchase_qu_id") or "").strip():
+            _prefill_qu(conn, p["raw"], gid)
+        conn.commit()
+        new_barcode = (form.get("barcode") or "").strip() if "barcode" in form else (p.get("barcode") or "")
+        new_gid = gid if gid_raw else p.get("grocy_id")
+        if new_gid and new_barcode and new_barcode != (p.get("barcode") or ""):
+            try:
+                base_url, api_key = grocy_client.get_config()
+                new_qu = form.get("purchase_qu_id", "").strip() if "purchase_qu_id" in form else None
+                try:
+                    new_qu = int(new_qu) if new_qu else p.get("purchase_qu_id")
+                except (TypeError, ValueError):
+                    new_qu = p.get("purchase_qu_id")
+                _save_barcode(base_url, api_key, int(new_gid), new_barcode, new_qu)
+                flash(f"Barcode {new_barcode} synced to Grocy #{new_gid}")
+            except Exception as e:
+                flash(f"Barcode sync failed (stored locally): {str(e)[:150]}")
+        if request.args.get("next") == "1":
+            nxt = conn.execute("SELECT id FROM products WHERE needs_review = 1 AND id != ? ORDER BY id LIMIT 1",
+                               (pid,)).fetchone()
+            conn.close()
+            if nxt:
+                return redirect(url_for("product_detail", pid=nxt["id"], next="1"))
+            flash("No more unreviewed products")
+            return redirect(url_for("products", filter="needs-review"))
+        conn.close()
+        flash("Product saved")
+        return redirect(url_for("product_detail", pid=pid))
+    receipts = [dict(r) for r in conn.execute(
+        """SELECT r.id AS id, r.filename AS filename, r.receipt_date AS receipt_date,
+                  i.qty AS qty, i.unit_price AS unit_price, i.final AS final
+           FROM items i JOIN receipts r ON r.id = i.receipt_id
+           WHERE i.raw = ? ORDER BY r.receipt_date DESC, r.id DESC""", (p["raw"],)).fetchall()]
+    stores = conn.execute(
+        "SELECT r.store AS store, COUNT(*) AS n FROM items i JOIN receipts r ON r.id = i.receipt_id "
+        "WHERE i.raw = ? GROUP BY r.store ORDER BY n DESC LIMIT 1", (p["raw"],)).fetchone()
+    units = [dict(u) for u in conn.execute("SELECT id, grocy_id, name FROM units ORDER BY name").fetchall()]
+    conn.close()
+    p["usual_store"] = p.get("market") or (stores["store"] if stores else "Lidl")
+    suggestions = []
+    try:
+        base_url, api_key = grocy_client.get_config()
+        catalog = grocy_client.fetch_catalog(base_url, api_key)
+        if not p.get("grocy_id"):
+            suggestions = grocy_client.suggest_grocy(p.get("clean"), p.get("barcode"), catalog)
+    except Exception:
+        suggestions = []
+    return render_template("product_detail.html", p=p, receipts=receipts, units=units,
+                           suggestions=suggestions)
+
+
+def _prefill_qu(conn, raw, gid):
+    """Best-effort: store the Grocy product's purchase QU + factor on the raw row."""
+    try:
+        base_url, api_key = grocy_client.get_config()
+        details = grocy_client.get_product_details(base_url, api_key, gid)
+    except Exception:
+        return
+    try:
+        factor = float(details.get("qu_conversion_factor_purchase_to_stock", 1.0) or 0) or 1.0
+    except (TypeError, ValueError):
+        factor = 1.0
+    qu_id = details.get("qu_id_purchase")
+    try:
+        qu_id = int(qu_id) if qu_id is not None else None
+    except (TypeError, ValueError):
+        qu_id = None
+    conn.execute("UPDATE products SET purchase_qu_id=?, qu_factor=? WHERE raw=?", (qu_id, factor, raw))
+
+
+def _save_barcode(base_url, api_key, product_id, barcode, qu_id):
+    """Post a barcode with its packaging size; fall back without qu_id.
+
+    Returns (barcode_object_id, used_qu_size: bool). Older Grocy versions
+    reject the qu_id field — push never fails on this.
+    """
+    if qu_id is not None:
+        try:
+            return grocy_client.add_barcode(base_url, api_key, product_id, barcode, qu_id=qu_id), True
+        except grocy_client.GrocyApiError:
+            pass
+    return grocy_client.add_barcode(base_url, api_key, product_id, barcode), False
 
 
 @app.route("/mappings/link", methods=["POST"])
@@ -311,25 +640,26 @@ def mapping_link():
         gid = int(request.form["grocy_id"])
     except (KeyError, ValueError):
         flash("Missing grocy_id")
-        return redirect(url_for("mappings"))
+        return redirect(url_for("products"))
     gname = request.form.get("grocy_name", "").strip()
     try:
         base_url, api_key = grocy_client.get_config()
         catalog = grocy_client.fetch_catalog(base_url, api_key)
         if gid not in catalog["by_id"]:
             flash(f"Grocy #{gid} not found (stale list)")
-            return redirect(url_for("mappings"))
+            return redirect(url_for("products"))
         if not gname:
             gname = str(catalog["by_id"][gid].get("name", ""))
     except Exception as e:
         flash(f"Grocy check failed: {e}")
-        return redirect(url_for("mappings"))
+        return redirect(url_for("products"))
     conn = get_db()
     conn.execute("UPDATE products SET grocy_id=?, grocy_name=?, grocy_synced_at=datetime('now') WHERE raw=?", (gid, gname, raw))
+    _prefill_qu(conn, raw, gid)
     conn.commit()
     conn.close()
     flash(f"Linked {raw} -> Grocy #{gid}")
-    return redirect(url_for("mappings", q=request.form.get("_q", "")))
+    return redirect(url_for("products", q=request.form.get("_q", "")))
 
 
 @app.route("/mappings/unlink", methods=["POST"])
@@ -340,7 +670,7 @@ def mapping_unlink():
     conn.commit()
     conn.close()
     flash(f"Unlinked {raw}")
-    return redirect(url_for("mappings"))
+    return redirect(url_for("products"))
 
 
 @app.route("/api/grocy_status")
@@ -364,7 +694,10 @@ def resolve_push_items(receipt_id):
     conn = get_db()
     r = conn.execute("SELECT * FROM receipts WHERE id=?", (receipt_id,)).fetchone()
     items = conn.execute("SELECT * FROM items WHERE receipt_id=?", (receipt_id,)).fetchall()
-    prods = {p["raw"]: dict(p) for p in conn.execute("SELECT raw, grocy_id, grocy_name, grocy_track FROM products").fetchall()}
+    prods = {p["raw"]: dict(p) for p in conn.execute(
+        "SELECT raw, grocy_id, grocy_name, grocy_track, purchase_qu_id, qu_factor FROM products").fetchall()}
+    unit_names = {u["grocy_id"]: u["name"] for u in
+                  conn.execute("SELECT grocy_id, name FROM units WHERE grocy_id IS NOT NULL").fetchall()}
     conn.close()
     grocy_error = None
     try:
@@ -378,7 +711,6 @@ def resolve_push_items(receipt_id):
     except Exception as e:
         return r, [], None, True, f"Grocy unreachable: {str(e)[:150]}"
     out = []
-    details_cache = {}
     for i in items:
         d = dict(i)
         p = prods.get(d["raw"])
@@ -399,14 +731,13 @@ def resolve_push_items(receipt_id):
         else:
             gid = int(p["grocy_id"])
             try:
-                if gid not in details_cache:
-                    details_cache[gid] = grocy_client.get_product_details(base_url, api_key, gid)
-                details = details_cache[gid]
-            except Exception:
-                details = {}
-            amount, factor = grocy_client.convert_to_stock_amount(qty, details)
-            unit_name = ((details.get("default_quantity_unit_purchase") or {}).get("name")
-                         if isinstance(details, dict) else "") or ""
+                factor = float(p.get("qu_factor") or 1.0)
+            except (TypeError, ValueError):
+                factor = 1.0
+            if factor <= 0:
+                factor = 1.0
+            amount = round(qty * factor, 4)
+            unit_name = unit_names.get(p.get("purchase_qu_id"), "")
             d.update({"grocy_id": gid,
                         "grocy_name": str(catalog["by_id"][gid].get("name", "")),
                         "amount": amount, "price": float(d.get("final") or 0) / amount if amount else 0.0,
@@ -522,11 +853,12 @@ def grocy_preview(rid):
     items = _receipt_items(rid)
     conn = get_db()
     users, splits, paid_with = _split_context(conn, r, items)
+    pids = {x["raw"]: x["id"] for x in conn.execute("SELECT id, raw FROM products")}
     conn.close()
     return render_template("receipt_detail.html", r=r,
                            items=items, preview=resolved,
                            grocy_configured=configured, grocy_error=err,
-                           push_log=_push_log(rid),
+                           push_log=_push_log(rid), pids=pids,
                            users=users, splits=splits, paid_with=paid_with)
 
 
@@ -539,6 +871,7 @@ def receipt_detail(rid):
         conn.close()
         return "Not found", 404
     users, splits, paid_with = _split_context(conn, r, items)
+    pids = {x["raw"]: x["id"] for x in conn.execute("SELECT id, raw FROM products")}
     conn.close()
     try:
         _, preview, catalog, configured, err = resolve_push_items(rid)
@@ -546,7 +879,7 @@ def receipt_detail(rid):
         preview, configured, err = [], False, None
     return render_template("receipt_detail.html", r=r, items=items, preview=preview,
                            grocy_configured=configured, grocy_error=err,
-                           push_log=_push_log(rid),
+                           push_log=_push_log(rid), pids=pids,
                            users=users, splits=splits, paid_with=paid_with)
 
 
@@ -619,13 +952,13 @@ def mapping_track():
     track = 1 if request.form.get("track") == "1" else 0
     if not raw:
         flash("Missing raw")
-        return redirect(url_for("mappings"))
+        return redirect(url_for("products"))
     conn = get_db()
     conn.execute("UPDATE products SET grocy_track=? WHERE raw=?", (track, raw))
     conn.commit()
     conn.close()
     flash(f"{'Tracking' if track else 'Skipping'} {raw} for Grocy push")
-    return redirect(url_for("mappings", q=request.form.get("_q", "")))
+    return redirect(url_for("products", q=request.form.get("_q", "")))
 
 
 @app.route("/mappings/create-in-grocy", methods=["POST"])
@@ -635,7 +968,7 @@ def mapping_create_in_grocy():
     barcode = request.form.get("barcode", "").strip()
     if not raw or not name:
         flash("Missing product name")
-        return redirect(url_for("mappings"))
+        return redirect(url_for("products"))
 
     def _opt(key):
         v = (request.form.get(key) or "").strip()
@@ -652,18 +985,19 @@ def mapping_create_in_grocy():
         gid = grocy_client.create_product(base_url, api_key, name, location_id, qu_purchase, qu_stock)
         if barcode:
             try:
-                grocy_client.add_barcode(base_url, api_key, gid, barcode)
+                _save_barcode(base_url, api_key, gid, barcode, qu_purchase)
             except Exception as e:
                 flash(f"Created Grocy #{gid} but barcode failed: {e}")
         conn = get_db()
-        conn.execute("UPDATE products SET grocy_id=?, grocy_name=?, grocy_synced_at=datetime('now') WHERE raw=?",
-                     (gid, name, raw))
+        conn.execute("""UPDATE products SET grocy_id=?, grocy_name=?, grocy_synced_at=datetime('now'),
+                        purchase_qu_id=COALESCE(purchase_qu_id, ?), qu_factor=COALESCE(qu_factor, 1.0) WHERE raw=?""",
+                     (gid, name, qu_purchase, raw))
         conn.commit()
         conn.close()
         flash(f"Created Grocy #{gid} and linked {raw}")
     except Exception as e:
         flash(f"Grocy create failed: {e}")
-    return redirect(url_for("mappings", q=request.form.get("_q", "")))
+    return redirect(url_for("products", q=request.form.get("_q", "")))
 
 
 @app.route("/mappings/new-item")
@@ -728,7 +1062,7 @@ def mapping_new_item_create():
             description=description)
         if barcode:
             try:
-                grocy_client.add_barcode(base_url, api_key, gid, barcode)
+                _save_barcode(base_url, api_key, gid, barcode, _opt("qu_purchase"))
             except Exception as e:
                 flash(f"Created Grocy #{gid} but barcode failed: {e}")
         conn = get_db()
@@ -740,7 +1074,7 @@ def mapping_new_item_create():
     except Exception as e:
         flash(f"Grocy create failed: {e}")
         return redirect(url_for("mapping_new_item", raw=raw))
-    return redirect(url_for("mappings"))
+    return redirect(url_for("products"))
 
 
 def _resolve_category(form):
@@ -771,7 +1105,7 @@ def mapping_update():
     conn.commit()
     conn.close()
     flash(f"Updated {raw}")
-    return redirect(url_for("mappings", q=request.form.get("_q", "")))
+    return redirect(url_for("products", q=request.form.get("_q", "")))
 
 
 @app.route("/mappings/bulk-update", methods=["POST"])
@@ -806,7 +1140,7 @@ def mapping_bulk_update():
     conn.commit()
     conn.close()
     flash(f"Updated {updated} mapping(s)")
-    return redirect(url_for("mappings", q=request.form.get("_q", "")))
+    return redirect(url_for("products", q=request.form.get("_q", "")))
 
 
 @app.route("/mappings/add", methods=["POST"])
@@ -815,7 +1149,7 @@ def mapping_add():
     clean = request.form.get("clean", "").strip() or raw
     category = _resolve_category(request.form)
     if not raw:
-        return redirect(url_for("mappings"))
+        return redirect(url_for("products"))
     conn = get_db()
     conn.execute("INSERT OR IGNORE INTO products (raw, clean, category) VALUES (?,?,?)",
                  (raw, clean, category))
@@ -823,7 +1157,7 @@ def mapping_add():
                  (clean, category, raw))
     conn.commit()
     conn.close()
-    return redirect(url_for("mappings"))
+    return redirect(url_for("products"))
 
 
 @app.route("/mappings/delete/<path:raw>", methods=["POST"])
@@ -832,7 +1166,7 @@ def mapping_delete(raw):
     conn.execute("DELETE FROM products WHERE raw=?", (raw,))
     conn.commit()
     conn.close()
-    return redirect(url_for("mappings"))
+    return redirect(url_for("products"))
 
 
 @app.route("/prices")
@@ -922,8 +1256,41 @@ def settings():
     cards = [dict(r) for r in conn.execute(
         """SELECT c.last4 AS last4, c.user_id AS user_id, u.name AS user_name
            FROM card_map c JOIN users u ON u.id = c.user_id ORDER BY c.last4""").fetchall()]
+    units = [dict(r) for r in conn.execute("SELECT id, grocy_id, name, source FROM units ORDER BY name").fetchall()]
     conn.close()
-    return render_template("settings.html", v=vals, users=users, cards=cards)
+    return render_template("settings.html", v=vals, users=users, cards=cards, units=units)
+
+
+@app.route("/settings/units-refresh", methods=["POST"])
+def settings_units_refresh():
+    try:
+        base_url, api_key = grocy_client.get_config()
+        lookups = grocy_client.fetch_lookups(base_url, api_key)
+    except Exception as e:
+        flash(f"Grocy units unavailable, keeping cached list: {str(e)[:150]}")
+        return redirect(url_for("settings"))
+    conn = get_db()
+    n = 0
+    for u in lookups.get("quantity_units", []):
+        try:
+            gid = int(u.get("id"))
+        except (TypeError, ValueError):
+            continue
+        name = str(u.get("name", "")).strip()
+        if not name:
+            continue
+        try:
+            conn.execute("""INSERT INTO units (grocy_id, name, source, cached_at)
+                            VALUES (?, ?, 'grocy', datetime('now'))
+                            ON CONFLICT(grocy_id) DO UPDATE SET name=excluded.name, source='grocy',
+                            cached_at=datetime('now')""", (gid, name))
+            n += 1
+        except Exception:
+            continue
+    conn.commit()
+    conn.close()
+    flash(f"Units refreshed from Grocy: {n}")
+    return redirect(url_for("settings"))
 
 
 @app.route("/settings/users", methods=["POST"])

@@ -148,7 +148,7 @@ def test_mappings_shows_grocy_ui(monkeypatch):
     import app as appmod
     appmod.app.testing = True
     c = appmod.app.test_client()
-    r = c.get("/mappings")
+    r = c.get("/products")
     assert r.status_code == 200
     assert "Grocy" in r.get_data(as_text=True)
 
@@ -208,7 +208,7 @@ def test_mappings_flags_orphan_link(tmp_path, monkeypatch):
     monkeypatch.setenv("GROCY_API_KEY", "k")
     appmod.app.testing = True
     c = appmod.app.test_client()
-    r = c.get("/mappings")
+    r = c.get("/products")
     assert r.status_code == 200
     assert "stale" in r.get_data(as_text=True).lower()
 

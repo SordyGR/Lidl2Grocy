@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Mappings (raw → clean)</h1>
+<h1>Products (raw → clean)</h1>
 {% if not grocy_configured %}
 <p class="notice-warn">Grocy not configured — set GROCY_URL (with /api) + GROCY_API_KEY to enable linking.</p>
 {% elif grocy_error %}
@@ -10,9 +10,10 @@
 {% for n in grocy_names %}<option value="{{ n }}">{% endfor %}
 </datalist>
 <form method="get">
-<input name="q" value="{{ q }}" placeholder="search raw / clean / category / barcode">
+<input id="q" name="q" value="{{ q }}" placeholder="search raw / clean / category / barcode">
 <select name="filter"><option value="all" {% if filt=="all" %}selected{% endif %}>all</option>
-<option value="unmapped" {% if filt=="unmapped" %}selected{% endif %}>unmapped</option></select>
+<option value="unmapped" {% if filt=="unmapped" %}selected{% endif %}>unmapped</option>
+<option value="needs-review" {% if filt=="needs-review" %}selected{% endif %}>needs review</option></select>
 <select name="cat"><option value="">all categories</option>
 {% for c in cats %}<option value="{{ c["category"] }}" {% if c["category"]==cat %}selected{% endif %}>{{ c["category"] }}</option>{% endfor %}
 </select>
@@ -24,6 +25,9 @@
 <option value="skipped" {% if tf=="skipped" %}selected{% endif %}>skipped</option></select>
 <input type="hidden" name="sort" value="{{ sort }}">
 <input type="hidden" name="dir" value="{{ direction }}">
+<select name="per" title="rows per page">
+{% for n in [25, 50, 100] %}<option value="{{ n }}" {% if per==n %}selected{% endif %}>{{ n }} / page</option>{% endfor %}
+</select>
 <button>Filter</button>
 </form>
 {% set catlist = cats|map(attribute='category')|list %}
@@ -42,17 +46,18 @@
 <td><button>Add</button></td>
 </form></tr>{% endfor %}</table>
 {% endif %}
-<h2>{{ count }} mappings — page {{ page }} of {{ pages }}</h2>
+<h2 id="rowcount">{{ count }} products — page {{ page }} of {{ pages }}</h2>
 {% if pages > 1 %}
-<p>{% if page > 1 %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ sort }}&dir={{ direction }}&page={{ page - 1 }}">← Prev</a>{% endif %}
-{% if page < pages %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ sort }}&dir={{ direction }}&page={{ page + 1 }}">Next →</a>{% endif %}</p>
+<p>{% if page > 1 %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ sort }}&dir={{ direction }}&per={{ per }}&page={{ page - 1 }}">← Prev</a>{% endif %}
+{% if page < pages %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ sort }}&dir={{ direction }}&per={{ per }}&page={{ page + 1 }}">Next →</a>{% endif %}</p>
 {% endif %}
-{% macro sortlink(col, label) %}{% if sort == col and direction == "asc" %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ col }}&dir=desc">{{ label }} ▲</a>{% elif sort == col %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ col }}&dir=asc">{{ label }} ▼</a>{% else %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ col }}&dir=asc">{{ label }}</a>{% endif %}{% endmacro %}
+{% macro sortlink(col, label) %}{% if sort == col and direction == "asc" %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ col }}&dir=desc&per={{ per }}">{{ label }} ▲</a>{% elif sort == col %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ col }}&dir=asc&per={{ per }}">{{ label }} ▼</a>{% else %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ col }}&dir=asc&per={{ per }}">{{ label }}</a>{% endif %}{% endmacro %}
 <form id="bulkform" method="post" action="/mappings/bulk-update">
 <input type="hidden" name="_q" value="{{ q }}">
 <button>Save selected</button>
 </form>
-<table>
+<div id="product-list">
+<table id="product-table">
 <tr><th>☐</th><th>{{ sortlink("raw", "Raw") }}</th><th>{{ sortlink("clean", "Clean") }}</th><th>{{ sortlink("category", "Category") }}</th><th>{{ sortlink("barcode", "Barcode") }}</th><th>Brand/Unit</th><th>Notes</th><th></th><th>Grocy</th></tr>
 {% for r in rows %}<tr data-bulk-row>
 <td><input type="checkbox" class="bulksel"></td>
@@ -112,6 +117,29 @@
 </td>
 </tr>{% endfor %}
 </table>
+</div>
+<script>
+(function(){
+  var input = document.getElementById('q');
+  if (!input) return;
+  var timer = null;
+  input.addEventListener('input', function(){
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function(){
+      var params = new URLSearchParams(new FormData(input.form)).toString();
+      fetch('/products?' + params, {headers: {'X-Requested-With': 'fetch'}})
+        .then(function(r){ return r.text(); })
+        .then(function(html){
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var list = doc.getElementById('product-list');
+          var count = doc.getElementById('rowcount');
+          if (list) document.getElementById('product-list').innerHTML = list.innerHTML;
+          if (count) document.getElementById('rowcount').textContent = count.textContent;
+        });
+    }, 250);
+  });
+})();
+</script>
 <script>
 document.querySelectorAll('select.catselect').forEach(function(s){
   var inp = s.parentElement.querySelector('input.newcat');

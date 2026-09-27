@@ -5,7 +5,7 @@
 <p>Paid with {{ paid_with }}</p>
 <table><tr><th>Raw</th><th>Clean</th><th>Cat</th><th>Qty</th><th>Unit</th><th>Disc</th><th>Final</th><th>Match</th><th>Owner</th></tr>
 {% for i in items %}<tr>
-<td>{{ i["raw"] }}</td><td>{{ i["clean"] }}</td><td>{{ i["category"] }}</td>
+<td>{{ i["raw"] }}</td><td>{% if i["raw"] in pids %}<a href="/products/{{ pids[i["raw"]] }}">{{ i["clean"] }}</a>{% else %}{{ i["clean"] }}{% endif %}</td><td>{{ i["category"] }}</td>
 <td>{{ i["qty"] }}</td><td>{{ "%.2f"|format(i["unit_price"]) }}</td>
 <td>{{ "%.2f"|format(i["discount"]) }}</td><td>{{ "%.2f"|format(i["final"]) }}</td>
 <td>{{ i["match_type"] }} {{ i["match_score"]|round|int if i["match_score"] else "" }}</td>
