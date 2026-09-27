@@ -84,6 +84,7 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     if (s.running) { status.textContent = 'Syncing…'; return; }
     if (timer) { clearInterval(timer); timer = null; }
     btn.disabled = false;
+    loginBtn.disabled = false;
     if (s.error) {
       status.textContent = 'Error: ' + s.error;
       awaiting = false;
@@ -104,16 +105,32 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     awaiting = true;
     timer = setInterval(refreshStatus, 3000);
   });
-  loginBtn.addEventListener('click', () => {
-    const pop = window.open('{{ real_login_url }}', 'lidllogin', 'width=900,height=700');
-    if (!pop) { status.textContent = 'Popup blocked — allow popups, then retry.'; return; }
-    status.textContent = 'Log in on the Lidl site… (closing that window retries sync)';
-    const watch = setInterval(() => {
-      if (pop.closed) { clearInterval(watch); status.textContent = 'Login window closed — retrying sync…'; btn.click(); }
-    }, 1500);
-  });
-  window.addEventListener('message', (e) => {
-    if (e.data === 'lidl-login-ok') btn.click();
+  const containerBrowser = {{ container_browser|tojson }};
+  loginBtn.addEventListener('click', async () => {
+    if (containerBrowser) {
+      const pop = window.open('http://localhost:6080/vnc.html?autoconnect=true&resize=scale',
+                              'lidl-container-browser', 'width=1100,height=800');
+      if (!pop) { status.textContent = 'Popup blocked — allow popups, then retry.'; return; }
+    }
+    btn.disabled = true;
+    loginBtn.disabled = true;
+    status.textContent = containerBrowser
+      ? 'Sign in to Lidl in the container browser; syncing will continue there. '
+        + 'For a remote host, tunnel port 6080: ssh -L 6080:127.0.0.1:6080 <user>@<server>.'
+      : 'Opening the Lidl sign-in browser…';
+    const r = await fetch('/fetch/run', {
+      method: 'POST',
+      body: new URLSearchParams({headed: '1'})
+    });
+    const j = await r.json();
+    if (!j.started) {
+      status.textContent = j.reason || 'Already running';
+      btn.disabled = false;
+      loginBtn.disabled = false;
+      return;
+    }
+    awaiting = true;
+    timer = setInterval(refreshStatus, 3000);
   });
   refreshStatus();
 })();

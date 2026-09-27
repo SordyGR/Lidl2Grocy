@@ -30,20 +30,30 @@ _LOGIN_COOLDOWN_UNTIL = 0.0
 LOGIN_COOLDOWN_S = 30 * 60
 
 
-def _run_sync():
+def _run_sync(headed=False):
+    global _LOGIN_COOLDOWN_UNTIL
     try:
         # Full catch-up: fetch every new receipt since the last sync, not
         # just the first one (latest_only would stop after one import).
-        rc = fetch_lidl.cmd_sync(latest_only=False)
+        if headed:
+            rc = fetch_lidl.cmd_sync(latest_only=False, headed=True)
+        else:
+            rc = fetch_lidl.cmd_sync(latest_only=False)
         if isinstance(rc, int) and rc != 0:
             user, pw = fetch_lidl.get_lidl_creds()
-            if not user or not pw:
+            if rc == 3 and getattr(fetch_lidl, "LAST_LOGIN_NOTE", None) == "overload":
+                _LOGIN_COOLDOWN_UNTIL = time.time() + LOGIN_COOLDOWN_S
+            if rc == 3 and (not user or not pw):
                 _FETCH["error"] = ("No Lidl credentials saved — enter them "
                                    "in Settings, then sync again")
-            else:
+            elif rc in (3, 4) and getattr(fetch_lidl, "LAST_SYNC_ERROR", None):
+                _FETCH["error"] = fetch_lidl.LAST_SYNC_ERROR[:300]
+            elif rc == 3:
                 _FETCH["error"] = ("Lidl auto-login failed — Lidl may be blocking "
                                    "automation; use the paste fallback on the "
                                    "dashboard")
+            else:
+                _FETCH["error"] = f"Lidl receipt sync failed (exit code {rc})"
         else:
             _FETCH["result"] = rc
     except Exception as e:
@@ -57,11 +67,16 @@ def fetch_run():
     with _LOGIN_LOCK:
         if _LOGIN["running"]:
             return jsonify({"started": False, "reason": "login in progress"})
+        if time.time() < _LOGIN_COOLDOWN_UNTIL:
+            wait_min = int((_LOGIN_COOLDOWN_UNTIL - time.time()) / 60) + 1
+            return jsonify({"started": False,
+                            "reason": f"Lidl asked us to wait; retry in about {wait_min} min"})
     with _FETCH_LOCK:
         if _FETCH["running"]:
             return jsonify({"started": False, "reason": "already running"})
         _FETCH.update({"running": True, "result": None, "error": None})
-    threading.Thread(target=_run_sync, daemon=True).start()
+    headed = request.form.get("headed") == "1"
+    threading.Thread(target=_run_sync, args=(headed,), daemon=True).start()
     return jsonify({"started": True})
 
 
@@ -250,7 +265,8 @@ def dashboard():
     return render_template(_tpl("dashboard.html"), k=kpis, monthly=monthly,
                            by_cat=by_cat, recent=recent, top=top,
                            user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "",
-                           real_login_url=fetch_lidl.HISTORY_URL.format(page=1))
+                           real_login_url=fetch_lidl.HISTORY_URL.format(page=1),
+                           container_browser=bool(os.environ.get("LIDL_BROWSER_LOGIN_ENABLED")))
 
 
 def _pie_bounds(pie, frm, to):

@@ -126,15 +126,14 @@ def test_login_popup_post_failure_returns_401(tmp_path, monkeypatch):
     assert r.get_json()["ok"] is False
 
 
-def test_dashboard_wires_login_popup(tmp_path, monkeypatch):
+def test_dashboard_wires_container_browser_login(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     body = c.get("/").get_data(as_text=True)
     assert 'id="login-btn"' in body
-    # popup opens the REAL Lidl site (manual credentials, no automation
-    # fingerprint); closing that window is the intercept signal for a retry
-    assert "lidl-hellas.gr" in body
-    assert "pop.closed" in body
-    assert "lidl-login-ok" in body
+    # The login button opens the container's persistent browser viewer, then
+    # starts a headed sync so the user's Lidl session is stored in Docker.
+    assert "http://localhost:6080/vnc.html?autoconnect=true" in body
+    assert "headed: '1'" in body
 
 
 def test_login_rejected_while_sync_running(tmp_path, monkeypatch):

@@ -25,6 +25,7 @@ def _profile_dir():
     return os.environ.get("LIDL_PROFILE_DIR", PROFILE_DIR)
 
 LAST_LOGIN_NOTE = None
+LAST_SYNC_ERROR = None
 
 
 def launch_context(pw, headed=False):
@@ -186,7 +187,13 @@ def attempt_login(email: str, pw: str) -> bool:
         except Exception:
             return False
         finally:
-            context.close()
+            try:
+                context.close()
+            except Exception as e:
+                # If the user closes the headed browser during sign-in, or
+                # Chromium exits itself, cleanup must not mask the sync's
+                # login/fetch result with a TargetClosedError.
+                print(f"Browser cleanup warning: {type(e).__name__}: {e}")
 
 
 def wait_for_login(page, timeout_s: int = 300) -> bool:
@@ -249,6 +256,9 @@ def fetch_detail_text(page, tid: str) -> str:
 
 
 def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False) -> int:
+    global LAST_LOGIN_NOTE, LAST_SYNC_ERROR
+    LAST_LOGIN_NOTE = None
+    LAST_SYNC_ERROR = None
     from playwright.sync_api import sync_playwright
     init_db()
     new, skipped = 0, 0
@@ -263,21 +273,33 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
                     if try_auto_login(page):
                         page.goto(HISTORY_URL.format(page=1))
                         if is_login_redirect(page.url):
-                            print("LOGIN NEEDED \u2014 auto-login failed, rerun with --headed and log in once")
+                            LAST_SYNC_ERROR = "Lidl kept redirecting to its login page after auto-login"
+                            print(f"LOGIN NEEDED \u2014 {LAST_SYNC_ERROR}; rerun with --headed and log in once")
                             return 3
                     else:
-                        print("LOGIN NEEDED \u2014 rerun with --headed and log in once")
+                        note = LAST_LOGIN_NOTE or "unknown login failure"
+                        LAST_SYNC_ERROR = f"Lidl auto-login failed ({note}); use --headed to sign in once"
+                        print(f"LOGIN NEEDED \u2014 {LAST_SYNC_ERROR}")
                         return 3
                 if headed:
                     print("Waiting for login in the opened browser window (5 min max)...")
                     if not wait_for_login(page):
-                        print("LOGIN NEEDED \u2014 login was not completed in time")
+                        LAST_SYNC_ERROR = "Lidl sign-in was not completed in the opened browser"
+                        print(f"LOGIN NEEDED \u2014 {LAST_SYNC_ERROR}")
                         return 3
                     page.goto(HISTORY_URL.format(page=1))
                     if is_login_redirect(page.url):
-                        print("LOGIN NEEDED \u2014 still on the login page, rerun with --headed")
+                        LAST_SYNC_ERROR = "Lidl still redirects to login after the interactive sign-in"
+                        print(f"LOGIN NEEDED \u2014 {LAST_SYNC_ERROR}; rerun with --headed")
                         return 3
             tids = collect_tids(page, max_pages)
+            if not tids:
+                LAST_SYNC_ERROR = (
+                    "No purchase-detail links were found on the Lidl history page. "
+                    f"Current page: {page.url}"
+                )
+                print(f"FETCH FAILED \u2014 {LAST_SYNC_ERROR}")
+                return 4
             conn = get_db()
             try:
                 seen_db = {r[0] for r in
@@ -300,13 +322,25 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
                         seen_db.add(tid)
                         if latest_only:
                             break
-                    except Exception:
+                    except Exception as e:
                         needs.append(tid)
+                        print(f"Receipt {tid} needs review: {type(e).__name__}: {e}")
             finally:
                 conn.close()
         finally:
-            context.close()
+            try:
+                context.close()
+            except Exception as e:
+                # Closing a browser the user has already closed should not
+                # replace the more useful sync/login result.
+                print(f"Browser cleanup warning: {type(e).__name__}: {e}")
     print(f"new: {new}, skipped: {skipped}, needs-review: {needs}")
+    if needs:
+        LAST_SYNC_ERROR = (
+            f"Fetched {new} receipt(s); {len(needs)} receipt(s) failed and need review: "
+            + ", ".join(needs)
+        )
+        return 4
     return 0
 
 

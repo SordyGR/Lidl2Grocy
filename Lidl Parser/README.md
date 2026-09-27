@@ -37,4 +37,13 @@ python fetch_lidl.py --max 5         # cap history pages
 python fetch_lidl.py --paste pasted.txt --tid 14000...  # manual fallback, no login
 ```
 
-First run opens a browser: log in once at lidl-hellas.gr, then rerun. Session persists in `data/.lidl-profile/` (git-ignored).
+In Docker, the dashboard's **Log in** button opens the container's Chromium
+through noVNC. Sign in there once; its profile persists in the mounted `data/`
+directory at `data/.lidl-profile-docker/` and is reused for later syncs. Docker
+uses a separate profile from native Windows runs. Port 6080 is published on host
+localhost only. For a remote Docker host, forward it with
+`ssh -L 6080:127.0.0.1:6080 <user>@<server>` before clicking **Log in**.
+
+For local non-Docker runs, the **Log in** button opens a headed Chromium window
+on the machine running Flask. Session cookies persist in
+`data/.lidl-profile/` (git-ignored).
