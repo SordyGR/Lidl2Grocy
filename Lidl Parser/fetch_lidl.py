@@ -19,6 +19,11 @@ DETAIL_URL = ("https://www.lidl-hellas.gr/mre/purchase-detail"
 LOGIN_URL = "https://www.lidl-hellas.gr/user-api/login?step=login&redirect=/"
 PROFILE_DIR = os.path.join(BASE_DIR, "data", ".lidl-profile")
 
+
+def _profile_dir():
+    """Profile location; LIDL_PROFILE_DIR wins (Docker: mount it from /app/data)."""
+    return os.environ.get("LIDL_PROFILE_DIR", PROFILE_DIR)
+
 LAST_LOGIN_NOTE = None
 
 
@@ -29,10 +34,21 @@ def launch_context(pw, headed=False):
     overload" refusal, so we drop the strongest detectable signals:
     the AutomationControlled blink flag, navigator.webdriver, and the
     missing window.chrome runtime object.
+
+    NOTE: this profile directory holds a signed-in browser session —
+    protect it like a password. Prefer the manual login flow in the web
+    UI (real Lidl site, no automation) over storing LIDL_PASS.
     """
+    profile = _profile_dir()
+    os.makedirs(profile, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(profile, 0o700)
+    except OSError:
+        pass
     ctx = pw.chromium.launch_persistent_context(
-        PROFILE_DIR, headless=not headed,
-        args=["--disable-blink-features=AutomationControlled"])
+        _profile_dir(), headless=not headed,
+        args=["--disable-blink-features=AutomationControlled",
+              "--no-sandbox", "--disable-dev-shm-usage"])
     ctx.add_init_script(
         "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
         "if (!window.chrome) { window.chrome = {runtime: {}}; }")
@@ -40,12 +56,65 @@ def launch_context(pw, headed=False):
 
 
 def is_login_redirect(url: str) -> bool:
+    url = (url or "").lower()
     return "mre/" not in url and ("login" in url or "sign" in url or "auth" in url)
 
 
 def get_lidl_creds():
     import settings_store as ss
-    return ss.get("LIDL_USER"), ss.get("LIDL_PASS")
+    import secret_store as enc
+    return ss.get("LIDL_USER"), enc.get_secret("LIDL_PASS")
+
+
+def _click_main_next(page, timeout=5000) -> bool:
+    """Click the wide blue ΕΠΟΜΕΝΟ form button.
+
+    The header back link also reads ΕΠΟΜΕΝΟ — clicking it goes BACK a
+    step (probed 2026-09-27: in-field Enter triggers it and the flow
+    resets to the email stage). The submit button carries
+    type="button" and sits below the fold of the header (y > 100).
+    """
+    for sel in ('button[type="button"]:has-text("ΕΠΟΜΕΝΟ")',
+                'button[type="button"]:has-text("Next")'):
+        try:
+            page.click(sel, timeout=timeout)
+            return True
+        except Exception:
+            continue
+    try:
+        btns = page.query_selector_all('button:has-text("ΕΠΟΜΕΝΟ")') or []
+        for b in btns:
+            try:
+                box = b.bounding_box() or {}
+            except Exception:
+                continue
+            if box.get("y", 0) > 100 and box.get("width", 0) > 200:
+                b.click(timeout=timeout)
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _classify_failure(body: str):
+    """Map the login page text to a failure note (None = unknown)."""
+    body = body or ""
+    if "Υπερπληρότητα" in body or "system overload" in body.lower():
+        return "overload"
+    if "δημιουργία λογαριασμού" in body or "create an account" in body.lower():
+        return "no-account"
+    low = body.lower()
+    if ("λάθος" in low or "λανθασμέν" in low or "incorrect" in low
+            or "wrong password" in low or "invalid" in low):
+        return "bad-password"
+    return None
+
+
+def _read_body(page) -> str:
+    try:
+        return page.inner_text("body") or ""
+    except Exception:
+        return ""
 
 
 def try_auto_login(page, user=None, pw=None) -> bool:
@@ -59,57 +128,45 @@ def try_auto_login(page, user=None, pw=None) -> bool:
         page.goto(LOGIN_URL)
         for sel in ('input[type="email"]', 'input[name="email"]', 'input[type="text"]'):
             try:
-                page.fill(sel, user, timeout=5000)
+                page.fill(sel, user, timeout=8000)
                 break
             except Exception:
                 continue
-        # Step 2 of Lidl's login: email first, then an
-        # "ΕΠΟΜΕΝΟ" button reveals the password field.
-        for sel in ('text=ΕΠΟΜΕΝΟ', 'button:has-text("ΕΠΟΜΕΝΟ")',
-                    'button:has-text("Next")', 'button[type="submit"]'):
-            try:
-                page.click(sel, timeout=3000)
-                break
-            except Exception:
-                continue
+        # Step 2 of Lidl's login: email first, then the main ΕΠΟΜΕΝΟ
+        # button reveals the password field.
+        if not _click_main_next(page):
+            for sel in ('button:has-text("Next")', 'button[type="submit"]'):
+                try:
+                    page.click(sel, timeout=3000)
+                    break
+                except Exception:
+                    continue
         try:
-            page.wait_for_timeout(2000)
+            page.wait_for_selector('input[type="password"]', state="visible", timeout=20000)
         except Exception:
-            pass
+            LAST_LOGIN_NOTE = _classify_failure(_read_body(page)) or "timeout"
+            return False
         for sel in ('input[type="password"]', 'input[name="password"]'):
             try:
-                page.fill(sel, pw, timeout=5000)
+                page.fill(sel, pw, timeout=8000)
                 break
             except Exception:
                 continue
-        # Submit while focus is still in the password field: the page has
-        # several ΕΠΟΜΕΝΟ buttons (incl. a header back button), so a blind
-        # click can hit the wrong one, move focus away, and silently fail.
-        try:
-            page.press('input[type="password"]', 'Enter', timeout=5000)
-        except Exception:
-            pass
-        page.wait_for_timeout(5000)
-        if not is_login_redirect(page.url):
-            return True
-        for sel in ('button[type="submit"]',
-                    'button:has-text("ΕΠΟΜΕΝΟ"):visible',
-                    'button:has-text("ΣΥΝΔΕΣΗ"):visible'):
+        # Submit via the blue button. Never via in-field Enter: that
+        # activates the header back link and resets the flow to email.
+        _click_main_next(page)
+        for _ in range(5):
             try:
-                page.click(sel, timeout=3000)
-                break
+                page.wait_for_timeout(3000)
             except Exception:
-                continue
-        page.keyboard.press("Enter")
-        page.wait_for_timeout(8000)
-        if not is_login_redirect(page.url):
-            return True
-        try:
-            body = page.inner_text("body") or ""
-        except Exception:
-            body = ""
-        if "Υπερπληρότητα" in body:
-            LAST_LOGIN_NOTE = "overload"
+                pass
+            if not is_login_redirect(page.url):
+                return True
+            note = _classify_failure(_read_body(page))
+            if note:
+                LAST_LOGIN_NOTE = note
+                return False
+        LAST_LOGIN_NOTE = _classify_failure(_read_body(page))
         return False
     except Exception:
         return False
@@ -166,7 +223,7 @@ def collect_tids(page, max_pages: int = 0) -> list:
         found_new = False
         for el in page.query_selector_all("a[href*='purchase-detail']"):
             href = el.get_attribute("href") or ""
-            m = re.search(r"[?&]t=(\d+)", href)
+            m = re.search(r"[?&]t=([\w-]+)", href)
             if m and m.group(1) not in seen:
                 seen.add(m.group(1))
                 tids.append(m.group(1))

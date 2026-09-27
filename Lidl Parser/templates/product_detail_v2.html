@@ -1,0 +1,68 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<p><a href="/products">← Products</a></p>
+<h1>{{ p["clean"] or p["raw"] }}</h1>
+<p>
+{% if p["grocy_id"] %}<span class="pill pill-green">Linked: Grocy #{{ p["grocy_id"] }} {{ p["grocy_name"] or "" }}</span>
+{% else %}<span class="pill pill-amber">Unlinked</span>{% endif %}
+{% if p["grocy_track"] == 0 %}<span class="pill pill-grey">Skipped for push</span>{% endif %}
+{% if p["needs_review"] %}<span class="pill pill-amber">Needs review</span>{% endif %}
+<span class="pill pill-grey" id="abc-badge">ABC: …</span>
+</p>
+<div class="cols">
+<div class="card"><h2>Attributes</h2>
+<form method="post">
+<div class="field"><label>Raw name</label><div>{{ p["raw"] }}</div></div>
+<div class="field"><label>Clean name</label><input name="clean" value="{{ p["clean"] or "" }}"></div>
+<div class="field"><label>Category</label><input name="category" value="{{ p["category"] or "" }}"></div>
+<div class="field"><label>Barcode</label><input name="barcode" value="{{ p["barcode"] or "" }}"></div>
+<div class="field"><label>Brand</label><input name="brand" value="{{ p["brand"] or "" }}"></div>
+<div class="field"><label>Unit</label><select name="unit">
+<option value="">—</option>
+{% for u in units %}<option value="{{ u["name"] }}" {% if u["name"]==p["unit"] %}selected{% endif %}>{{ u["name"] }}</option>{% endfor %}
+</select></div>
+<div class="field"><label>Weight</label><input name="weight" value="{{ p["weight"] or "" }}"></div>
+<div class="field"><label>Notes</label><input name="notes" value="{{ p["notes"] or "" }}"></div>
+<div class="field"><label>Market</label><input name="market" value="{{ p["market"] or "" }}" placeholder="{{ p["usual_store"] }}"></div>
+<div class="field"><label>Grocy id</label><input name="grocy_id" value="{{ p["grocy_id"] or "" }}">
+<input name="grocy_name" value="{{ p["grocy_name"] or "" }}" placeholder="Grocy name">
+{% for s in suggestions %}<button type="submit" name="grocy_id" value="{{ s["grocy_id"] }}">★ #{{ s["grocy_id"] }} {{ s["grocy_name"] }}</button>{% endfor %}
+</div>
+<div class="field"><label>Purchase unit (Grocy)</label><select name="purchase_qu_id">
+<option value="">—</option>
+{% for u in units %}{% if u["grocy_id"] %}<option value="{{ u["grocy_id"] }}" {% if u["grocy_id"]==p["purchase_qu_id"] %}selected{% endif %}>{{ u["name"] }}</option>{% endif %}{% endfor %}
+</select></div>
+<div class="field"><label>Factor to stock</label><input name="qu_factor" value="{{ p["qu_factor"] or "" }}" placeholder="e.g. 200"></div>
+<div class="field"><label><input type="checkbox" name="grocy_track" value="1" {% if p["grocy_track"] != 0 %}checked{% endif %}> Track for push</label></div>
+<button class="btn">Save</button>
+<button class="btn btn-ghost" formaction="?next=1" formmethod="post">Save &amp; next unreviewed</button>
+</form>
+</div>
+<div>
+<div class="card"><h2>Price history</h2>
+<canvas id="trend"></canvas>
+</div>
+<div class="card" style="margin-top:1rem"><h2>Found in {{ receipts|length }} receipt(s)</h2>
+<table><tr><th>Date</th><th>File</th><th>Qty</th><th>Price</th></tr>
+{% for r in receipts %}<tr><td>{{ r["receipt_date"] }}</td>
+<td><a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a></td>
+<td>{{ r["qty"] }}</td><td>{{ "%.2f"|format(r["final"]) }}</td></tr>{% endfor %}
+</table></div>
+</div>
+</div>
+<script>
+(function(){
+  var clean = {{ p["clean"]|tojson }};
+  fetch("/api/price_history?clean=" + encodeURIComponent(clean)).then(function(r){ return r.json(); }).then(function(j){
+    var pts = (j.live || []).concat(j.legacy || []);
+    new Chart(document.getElementById("trend"), {type: "line",
+      data: {labels: pts.map(function(x){ return x.d; }), datasets: [{data: pts.map(function(x){ return x.p; }), spanGaps: true, borderColor: "#59A14F"}]},
+      options: {plugins: {legend: {display: false}}}});
+  });
+  fetch("/api/abc_analysis?metric=spend&top=50").then(function(r){ return r.json(); }).then(function(j){
+    var hit = (j.rows || []).find(function(x){ return x.clean === clean; });
+    document.getElementById("abc-badge").textContent = "ABC: " + (hit ? hit.class : "–");
+  });
+})();
+</script>
+{% endblock %}

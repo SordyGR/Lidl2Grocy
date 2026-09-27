@@ -1,0 +1,72 @@
+/* v2 UI — translated from the Penpot prototype (dark theme).
+   Additive skin: loaded only by base_v2.html. Old style.css is untouched. */
+:root {
+  --v2-bg: #14161A;
+  --v2-card: #1F232A;
+  --v2-card2: #22262E;
+  --v2-nav: #1B1E24;
+  --v2-text: #ECECEC;
+  --v2-muted: #9AA0A6;
+  --v2-green: #59A14F;
+  --v2-amber: #EDC948;
+  --v2-red: #E15759;
+  --v2-blue: #4E79A7;
+  --v2-line: #2E333C;
+  --v2-radius: 12px;
+}
+body.v2 { background: var(--v2-bg); color: var(--v2-text);
+  font-family: "IBM Plex Sans", system-ui, sans-serif; margin: 0; }
+body.v2 nav { background: var(--v2-nav); display: flex; align-items: center;
+  gap: 1.6rem; padding: 0 2rem; height: 64px; }
+body.v2 nav .brand { font-weight: 700; font-size: 1.25rem; color: var(--v2-text); }
+body.v2 nav a { color: var(--v2-muted); text-decoration: none; font-size: .95rem; }
+body.v2 nav a.active, body.v2 nav a:hover { color: var(--v2-text); }
+body.v2 nav .spacer { flex: 1; }
+body.v2 main { max-width: 1440px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+body.v2 h1 { font-size: 1.75rem; margin: .5rem 0; }
+body.v2 .sub { color: var(--v2-muted); margin-top: 0; }
+body.v2 .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; }
+body.v2 .kpi-card { background: var(--v2-card2); border-radius: var(--v2-radius);
+  padding: 1rem 1.2rem; }
+body.v2 .kpi-card span { color: var(--v2-muted); font-size: .85rem; }
+body.v2 .kpi-card b { display: block; font-size: 1.6rem; margin-top: .3rem; }
+body.v2 .grid2 { display: grid; grid-template-columns: 3fr 2fr; gap: 1rem; margin-top: 1rem; }
+body.v2 .card { background: var(--v2-card); border-radius: var(--v2-radius); padding: 1.2rem 1.4rem; }
+body.v2 .card h2 { margin: 0 0 .8rem; font-size: 1.15rem; }
+body.v2 .row-card { background: var(--v2-card2); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }
+body.v2 .row-card:last-child { margin-bottom: 0; }
+body.v2 a { color: var(--v2-blue); }
+body.v2 .btn { display: inline-block; background: var(--v2-green); color: #fff;
+  border: 0; border-radius: 8px; padding: .6rem 1.2rem; font-size: .95rem;
+  font-weight: 600; cursor: pointer; text-decoration: none; }
+body.v2 .btn-ghost { background: var(--v2-card2); color: var(--v2-text); }
+body.v2 .pill { display: inline-block; border-radius: 999px; padding: .2rem .9rem;
+  font-size: .85rem; font-weight: 600; color: #fff; }
+body.v2 .pill-green { background: var(--v2-green); }
+body.v2 .pill-amber { background: var(--v2-amber); }
+body.v2 .pill-red { background: var(--v2-red); }
+body.v2 .pill-blue { background: var(--v2-blue); }
+body.v2 .pill-grey { background: var(--v2-card2); color: var(--v2-muted); }
+body.v2 input[type=text], body.v2 input[type=password], body.v2 input:not([type]),
+body.v2 select, body.v2 textarea { background: var(--v2-card2); color: var(--v2-text);
+  border: 1px solid var(--v2-line); border-radius: 8px; padding: .5rem .7rem; font-size: .95rem; }
+body.v2 table { width: 100%; border-collapse: collapse; }
+body.v2 th { color: var(--v2-muted); font-size: .85rem; text-align: left; padding: .4rem .6rem; }
+body.v2 td { padding: .5rem .6rem; border-top: 1px solid var(--v2-line); }
+body.v2 .chip { display: inline-block; background: var(--v2-card2); color: var(--v2-muted);
+  border-radius: 999px; padding: .35rem 1rem; margin-right: .5rem; text-decoration: none; }
+body.v2 .chip.on { background: var(--v2-green); color: #fff; }
+body.v2 .flash p { background: var(--v2-card2); border-left: 4px solid var(--v2-amber);
+  padding: .6rem 1rem; border-radius: 0 8px 8px 0; }
+body.v2 .notice-warn { color: var(--v2-amber); }
+body.v2 .notice-err { color: var(--v2-red); }
+body.v2 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+body.v2 .field { margin-bottom: .8rem; }
+body.v2 .field label { display: block; color: var(--v2-muted); font-size: .85rem; margin-bottom: .25rem; }
+body.v2 .field input, body.v2 .field select { width: 100%; box-sizing: border-box; }
+body.v2 .popup { max-width: 440px; margin: 2rem auto; }
+@media (max-width: 900px) {
+  body.v2 .kpis { grid-template-columns: repeat(2, 1fr); }
+  body.v2 .grid2, body.v2 .cols { grid-template-columns: 1fr; }
+  body.v2 nav { flex-wrap: wrap; height: auto; padding: .6rem 1rem; gap: .8rem; }
+}

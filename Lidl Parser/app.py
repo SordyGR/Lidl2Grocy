@@ -32,7 +32,9 @@ LOGIN_COOLDOWN_S = 30 * 60
 
 def _run_sync():
     try:
-        rc = fetch_lidl.cmd_sync(latest_only=True)
+        # Full catch-up: fetch every new receipt since the last sync, not
+        # just the first one (latest_only would stop after one import).
+        rc = fetch_lidl.cmd_sync(latest_only=False)
         if isinstance(rc, int) and rc != 0:
             user, pw = fetch_lidl.get_lidl_creds()
             if not user or not pw:
@@ -75,8 +77,9 @@ def api_fetch_status():
 @app.route("/fetch/login", methods=["GET", "POST"])
 def fetch_login():
     if request.method == "GET":
-        return render_template("fetch_login.html",
-                               email=app_settings.get("LIDL_USER") or "")
+        return render_template(_tpl("fetch_login.html"),
+                               email=app_settings.get("LIDL_USER") or "",
+                               real_login_url=fetch_lidl.HISTORY_URL.format(page=1))
     email = (request.form.get("email") or "").strip()
     pw = request.form.get("password") or ""
     save = request.form.get("save") == "on"
@@ -100,15 +103,29 @@ def fetch_login():
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:200]}), 401
         if not ok:
-            if getattr(fetch_lidl, "LAST_LOGIN_NOTE", None) == "overload":
+            note = getattr(fetch_lidl, "LAST_LOGIN_NOTE", None)
+            if note == "overload":
                 _LOGIN_COOLDOWN_UNTIL = time.time() + LOGIN_COOLDOWN_S
                 return jsonify({"ok": False,
                                 "error": "Lidl is temporarily refusing automated sign-in "
                                          "(system overload). Wait about 30 min, then try once."}), 429
+            if note == "bad-password":
+                return jsonify({"ok": False,
+                                "error": "Lidl rejected the password. Check it and retry — "
+                                         "or log in on the real Lidl site instead."}), 401
+            if note == "no-account":
+                return jsonify({"ok": False,
+                                "error": "Lidl shows account creation for this email — "
+                                         "it is not registered. Check the email."}), 401
+            if note == "timeout":
+                return jsonify({"ok": False,
+                                "error": "Lidl's login page never reached the password step "
+                                         "(too slow or blocked). Retry once, or use manual login."}), 401
             return jsonify({"ok": False, "error": "Sign-in failed. Check email/password and retry."}), 401
         if save:
             app_settings.set("LIDL_USER", email)
-            app_settings.set("LIDL_PASS", pw)
+            import secret_store as _enc
+            _enc.set_secret("LIDL_PASS", pw)
         return jsonify({"ok": True})
     finally:
         with _LOGIN_LOCK:
@@ -155,6 +172,24 @@ def theme_set(mode):
         return redirect(request.args.get("next") or url_for("dashboard"))
     resp = redirect(request.args.get("next") or url_for("dashboard"))
     resp.set_cookie("theme", mode, max_age=31536000, samesite="Lax")
+    return resp
+
+
+def use_v2():
+    """Additive v2 skin opt-in (cookie). Old templates stay the default."""
+    return request.cookies.get("ui", "v1") == "v2"
+
+
+def _tpl(base):
+    return base.replace(".html", "_v2.html") if use_v2() else base
+
+
+@app.route("/ui/<v>")
+def ui_switch(v):
+    if v not in ("v1", "v2"):
+        return redirect(url_for("dashboard"))
+    resp = redirect(request.args.get("next") or url_for("dashboard"))
+    resp.set_cookie("ui", v, max_age=31536000, samesite="Lax")
     return resp
 
 
@@ -212,9 +247,10 @@ def dashboard():
         JOIN users u ON u.id = s.user_id
         GROUP BY u.name ORDER BY total DESC
     """)
-    return render_template("dashboard.html", k=kpis, monthly=monthly,
+    return render_template(_tpl("dashboard.html"), k=kpis, monthly=monthly,
                            by_cat=by_cat, recent=recent, top=top,
-                           user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "")
+                           user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "",
+                           real_login_url=fetch_lidl.HISTORY_URL.format(page=1))
 
 
 def _pie_bounds(pie, frm, to):
@@ -249,7 +285,66 @@ def _pie_bounds(pie, frm, to):
 @app.route("/receipts")
 def receipts():
     rows = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC")
-    return render_template("receipts.html", rows=rows)
+    return render_template(_tpl("receipts.html"), rows=rows)
+
+
+@app.route("/receipts/rescan-cards", methods=["POST"])
+def receipts_rescan_cards():
+    """Fill NULL card_last4 from on-disk receipt texts (fetch imports keep them)."""
+    import glob
+    fixed = 0
+    conn = get_db()
+    missing = conn.execute("SELECT id, filename FROM receipts WHERE card_last4 IS NULL OR card_last4 = ''").fetchall()
+    texts = {}
+    for path in glob.glob(os.path.join(BASE_DIR, "receipts", "*.txt")):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                texts[os.path.basename(path)] = f.read()
+        except OSError:
+            continue
+    for m in missing:
+        text = texts.get(m["filename"])
+        if not text:
+            continue
+        last4 = extract_card_last4(text)
+        if last4:
+            conn.execute("UPDATE receipts SET card_last4=? WHERE id=?", (last4, m["id"]))
+            fixed += 1
+    conn.commit()
+    conn.close()
+    flash(f"Rescanned cards: fixed {fixed} of {len(missing)}")
+    return redirect(url_for("receipts"))
+
+
+@app.route("/receipts/<int:rid>/delete", methods=["POST"])
+def receipt_delete(rid):
+    conn = get_db()
+    row = conn.execute("SELECT filename FROM receipts WHERE id=?", (rid,)).fetchone()
+    if not row:
+        conn.close()
+        return "Not found", 404
+    conn.execute("DELETE FROM receipts WHERE id=?", (rid,))
+    conn.commit()
+    conn.close()
+    flash(f"Deleted {row['filename']} and its items")
+    return redirect(url_for("receipts"))
+
+
+@app.route("/receipts/<int:rid>/card", methods=["POST"])
+def receipt_card(rid):
+    last4 = (request.form.get("last4") or "").strip()
+    if last4 and (len(last4) != 4 or not last4.isdigit()):
+        return "Card needs exactly 4 digits (or empty to clear)", 400
+    conn = get_db()
+    row = conn.execute("SELECT id FROM receipts WHERE id=?", (rid,)).fetchone()
+    if not row:
+        conn.close()
+        return "Not found", 404
+    conn.execute("UPDATE receipts SET card_last4=? WHERE id=?", (last4 or None, rid))
+    conn.commit()
+    conn.close()
+    flash(f"Card set to {last4 or 'cash'}")
+    return redirect(url_for("receipt_detail", rid=rid))
 
 
 @app.route("/export.csv")
@@ -312,6 +407,15 @@ def upload():
             iso_date, seq = parse_receipt_date(fname)
             total = float((df["Qty"] * df["Unit Price"] - df["Discount"]).sum())
             card_last4 = extract_card_last4(text)
+            # Keep the raw text on disk (like paste imports) so cards and
+            # other fields can be re-extracted later without re-uploading.
+            try:
+                os.makedirs(os.path.join(BASE_DIR, "receipts"), exist_ok=True)
+                with open(os.path.join(BASE_DIR, "receipts", os.path.basename(fname)),
+                          "w", encoding="utf-8") as _rf:
+                    _rf.write(text)
+            except OSError:
+                pass
             cur.execute(
                 """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4)
                    VALUES (?, ?, ?, ?, ?, ?)""",
@@ -329,12 +433,14 @@ def upload():
                     (rid, item["Product"], clean, cat, float(item["Qty"]),
                      float(item["Unit Price"]), float(item["VAT"]), float(item["Discount"]),
                      round(tot, 2), round(tot - float(item["Discount"]), 2), mtype, float(score)))
+                cur.execute("""INSERT OR IGNORE INTO products (raw, clean, category, needs_review)
+                               VALUES (?,?,?,1)""", (item["Product"], clean, cat))
             imported += 1
         conn.commit()
         conn.close()
         flash(f"Imported {imported} receipt(s)")
         return redirect(url_for("receipts"))
-    return render_template("upload.html")
+    return render_template(_tpl("upload.html"))
 
 
 def _product_filters(q, f, cat, gf, tf):
@@ -448,7 +554,7 @@ def products():
         else:
             d["suggestions"] = []
         enriched.append(d)
-    return render_template("products.html", rows=enriched, new_items=new_items, q=q, filt=f, cats=cats,
+    return render_template(_tpl("products.html"), rows=enriched, new_items=new_items, q=q, filt=f, cats=cats,
                            grocy_configured=grocy_configured, grocy_names=grocy_names,
                            grocy_error=grocy_error, orphans=sorted(orphans),
                            sort=sort, direction=direction, cat=cat, gf=gf, tf=tf, per=per,
@@ -596,7 +702,7 @@ def product_detail(pid):
             suggestions = grocy_client.suggest_grocy(p.get("clean"), p.get("barcode"), catalog)
     except Exception:
         suggestions = []
-    return render_template("product_detail.html", p=p, receipts=receipts, units=units,
+    return render_template(_tpl("product_detail.html"), p=p, receipts=receipts, units=units,
                            suggestions=suggestions)
 
 
@@ -855,7 +961,7 @@ def grocy_preview(rid):
     users, splits, paid_with = _split_context(conn, r, items)
     pids = {x["raw"]: x["id"] for x in conn.execute("SELECT id, raw FROM products")}
     conn.close()
-    return render_template("receipt_detail.html", r=r,
+    return render_template(_tpl("receipt_detail.html"), r=r,
                            items=items, preview=resolved,
                            grocy_configured=configured, grocy_error=err,
                            push_log=_push_log(rid), pids=pids,
@@ -877,7 +983,7 @@ def receipt_detail(rid):
         _, preview, catalog, configured, err = resolve_push_items(rid)
     except Exception:
         preview, configured, err = [], False, None
-    return render_template("receipt_detail.html", r=r, items=items, preview=preview,
+    return render_template(_tpl("receipt_detail.html"), r=r, items=items, preview=preview,
                            grocy_configured=configured, grocy_error=err,
                            push_log=_push_log(rid), pids=pids,
                            users=users, splits=splits, paid_with=paid_with)
@@ -1171,7 +1277,7 @@ def mapping_delete(raw):
 
 @app.route("/prices")
 def prices():
-    return render_template("prices.html")
+    return render_template(_tpl("prices.html"))
 
 
 @app.route("/api/price_history")
@@ -1189,7 +1295,7 @@ def api_price_history():
 
 @app.route("/api/price_history_multi")
 def api_price_history_multi():
-    cleans = [c for c in request.args.getlist("clean") if c.strip()][:20]
+    cleans = [c for c in request.args.getlist("clean") if c.strip()][:50]
     out = {}
     for clean in cleans:
         out[clean] = [dict(x) for x in query("""
@@ -1246,11 +1352,13 @@ def settings():
         app_settings.set("LIDL_USER", (request.form.get("LIDL_USER") or "").strip())
         pw = request.form.get("LIDL_PASS") or ""
         if pw:
-            app_settings.set("LIDL_PASS", pw)
-        flash("Settings saved")
+            import secret_store as _enc
+            _enc.set_secret("LIDL_PASS", pw)
+        flash("Settings saved (Lidl password is encrypted at rest)")
         return redirect(url_for("settings"))
     vals = {k: app_settings.get(k) for k in ("LIDL_USER", "GROCY_URL", "GROCY_API_KEY")}
-    vals["LIDL_PASS_SET"] = bool(app_settings.get("LIDL_PASS"))
+    import secret_store as _enc
+    vals["LIDL_PASS_SET"] = bool(_enc.get_secret("LIDL_PASS"))
     conn = get_db()
     users = [dict(r) for r in conn.execute("SELECT id, name FROM users ORDER BY name").fetchall()]
     cards = [dict(r) for r in conn.execute(
@@ -1290,6 +1398,14 @@ def settings_units_refresh():
     conn.commit()
     conn.close()
     flash(f"Units refreshed from Grocy: {n}")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/clear-lidl-pass", methods=["POST"])
+def settings_clear_lidl_pass():
+    import secret_store as _enc
+    _enc.clear_secret("LIDL_PASS")
+    flash("Saved Lidl password cleared")
     return redirect(url_for("settings"))
 
 

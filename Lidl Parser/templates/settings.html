@@ -11,7 +11,12 @@
 <p><a href="/api/grocy_status">Test Grocy connection</a></p>
 <button type="submit">Save</button>
 </form>
-<p><small>Note: the Lidl password is stored in plaintext in the local SQLite database.</small></p>
+<p><small>Note: the Lidl password is encrypted at rest (machine-local key in <code>data/.lidl-key</code>, or <code>LIDL_KEY</code> env).
+The browser profile in <code>data/.lidl-profile</code> holds a signed-in session — protect both like passwords.
+Prefer the manual login flow (real Lidl site, no stored password).</small></p>
+{% if v['LIDL_PASS_SET'] %}
+<form method="post" action="{{ url_for('settings_clear_lidl_pass') }}"><button>Clear saved password</button></form>
+{% endif %}
 <h2>Units</h2>
 <form method="post" action="{{ url_for('settings_units_refresh') }}">
 <button>Refresh from Grocy</button>

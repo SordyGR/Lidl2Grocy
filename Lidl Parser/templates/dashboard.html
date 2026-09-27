@@ -94,7 +94,7 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     if (s.error) {
       status.textContent = 'Error: ' + s.error;
       awaiting = false;
-      const needLogin = /login|auto-login|credential|settings/i.test(s.error);
+      const needLogin = /login|sign-?in|overload|refus|credential|paste|settings/i.test(s.error);
       loginBtn.hidden = !needLogin;
     } else if (s.result !== null && s.result !== undefined) {
       status.textContent = 'Done: ' + s.result + ' new/skipped/needs-review';
@@ -116,7 +116,20 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     timer = setInterval(refreshStatus, 3000);
   });
   loginBtn.addEventListener('click', () => {
-    window.open('/fetch/login', 'lidllogin', 'width=440,height=560');
+    // Real Lidl site in the popup: the user types credentials into Lidl's
+    // own form (no automation fingerprint, no overload block). Same-origin
+    // reads are blocked, so we watch for the window closing as the
+    // "intercept" signal, then retry sync once.
+    const pop = window.open('{{ real_login_url }}', 'lidllogin', 'width=900,height=700');
+    if (!pop) { status.textContent = 'Popup blocked — allow popups, then retry.'; return; }
+    status.textContent = 'Log in on the Lidl site… (closing that window retries sync)';
+    const watch = setInterval(() => {
+      if (pop.closed) {
+        clearInterval(watch);
+        status.textContent = 'Login window closed — retrying sync…';
+        btn.click();
+      }
+    }, 1500);
   });
   window.addEventListener('message', (e) => {
     if (e.data === 'lidl-login-ok') btn.click();

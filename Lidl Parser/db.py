@@ -145,6 +145,13 @@ def init_db():
         conn.execute("ALTER TABLE receipts ADD COLUMN card_last4 TEXT")
     for seed in UNIT_SEED:
         conn.execute("INSERT OR IGNORE INTO units (name, source) VALUES (?, 'local')", (seed,))
+    # Backfill stub products for item raws that predate stub creation
+    # (e.g. receipts imported via /upload, which never wrote products rows).
+    # Idempotent: INSERT OR IGNORE, so re-runs are safe.
+    conn.execute("""INSERT OR IGNORE INTO products (raw, clean, category, needs_review)
+                    SELECT DISTINCT i.raw, COALESCE(NULLIF(i.clean,''), i.raw),
+                           COALESCE(NULLIF(i.category,''), 'Misc'), 1
+                    FROM items i WHERE i.raw NOT IN (SELECT raw FROM products)""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_products_grocy ON products(grocy_id)")
     conn.commit()
     conn.close()

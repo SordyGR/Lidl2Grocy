@@ -22,7 +22,7 @@ def test_fetch_run_single_flight(tmp_path, monkeypatch):
     r1 = c.post("/fetch/run")
     assert r1.get_json()["started"] is True
     assert _wait_idle(appmod)
-    assert calls == [{"latest_only": True}]
+    assert calls == [{"latest_only": False}]
     r2 = c.post("/fetch/run")
     assert r2.get_json()["started"] is True
     assert _wait_idle(appmod)
@@ -64,4 +64,4 @@ def test_fetch_run_overlapping_rejected(tmp_path, monkeypatch):
     t.join(timeout=10)
     assert results["r1"]["started"] is True
     assert _wait_idle(appmod)
-    assert calls == [{"latest_only": True}]
+    assert calls == [{"latest_only": False}]

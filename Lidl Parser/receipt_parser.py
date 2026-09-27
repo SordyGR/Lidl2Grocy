@@ -13,11 +13,22 @@ from rapidfuzz import process, fuzz
 DEFAULT_CATEGORY = "Misc"
 
 _CARD_RE = re.compile(r"\*+\s*(\d{4})\s*$")
+_CARD_ANYWHERE_RE = re.compile(r"\*+\s*(\d{4})\b")
+_CARD_WORD_RE = re.compile(r"(?:ΚΑΡΤ|CARD|VISA|MASTERCARD)[^\d]*(\d{4})", re.IGNORECASE)
 
 
 def extract_card_last4(text):
-    for line in text.splitlines():
+    lines = text.splitlines()
+    for line in lines:
         m = _CARD_RE.search(line.rstrip())
+        if m:
+            return m.group(1)
+    for line in lines:
+        m = _CARD_ANYWHERE_RE.search(line)
+        if m:
+            return m.group(1)
+    for line in lines:
+        m = _CARD_WORD_RE.search(line)
         if m:
             return m.group(1)
     return None

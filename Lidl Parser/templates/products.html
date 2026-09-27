@@ -62,7 +62,7 @@
 {% for r in rows %}<tr data-bulk-row>
 <td><input type="checkbox" class="bulksel"></td>
 <form method="post" action="/mappings/update">
-<td>{{ r["raw"] }}<input type="hidden" name="raw" value="{{ r["raw"] }}"><input type="hidden" name="_q" value="{{ q }}"></td>
+<td><a href="/products/{{ r["id"] }}">{{ r["raw"] }}</a><input type="hidden" name="raw" value="{{ r["raw"] }}"><input type="hidden" name="_q" value="{{ q }}"></td>
 <td><input name="clean" value="{{ r["clean"] }}"></td>
 <td><select name="category" class="catselect">
 {% if r["category"] not in catlist %}<option value="{{ r["category"] }}" selected>{{ r["category"] }}</option>{% endif %}

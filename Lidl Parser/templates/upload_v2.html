@@ -1,0 +1,11 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<h1>Upload receipts</h1>
+<p class="sub">Select one or more Lidl <code>.txt</code> receipts. They are parsed and matched immediately.</p>
+<div class="card">
+<form method="post" enctype="multipart/form-data">
+<div class="field"><input type="file" name="files" multiple accept=".txt"></div>
+<button class="btn" type="submit">Upload</button>
+</form>
+</div>
+{% endblock %}

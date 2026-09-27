@@ -22,11 +22,29 @@ class _FakePage:
 
     def click(self, sel, timeout=5000):
         self.clicked.append(sel)
-        if not self.advanced and "password" not in sel:
+        if "password" in sel:
+            self.submit_clicks += 1
+            if any("password" in s for s in self.filled):
+                self.url = "https://www.lidl-hellas.gr/"
+        elif not self.advanced:
             self.advanced = True
             self.url = "https://www.lidl-hellas.gr/user-api/login?step=password"
         else:
             self.submit_clicks += 1
+            if any("password" in s for s in self.filled):
+                self.url = "https://www.lidl-hellas.gr/"
+
+    def wait_for_selector(self, *a, **k):
+        return None
+
+    def wait_for_timeout(self, ms):
+        return None
+
+    def inner_text(self, sel):
+        return ""
+
+    def query_selector_all(self, *a, **k):
+        raise Exception("no direct matches")
 
     def press(self, sel, key, timeout=None):
         if "password" in sel and any("password" in s for s in self.filled):
@@ -78,7 +96,10 @@ def test_login_popup_renders_unbranded_form(tmp_path, monkeypatch):
     body = r.get_data(as_text=True)
     assert 'name="email"' in body
     assert 'name="password"' in body
-    assert "lidl-hellas" not in body.lower()
+    # auto-login form stays unbranded, but the popup must offer the real
+    # Lidl site for manual login + a paste fallback
+    assert "lidl-hellas.gr" in body
+    assert "/fetch/paste" in body
 
 
 def test_login_popup_post_success_saves_and_reports(tmp_path, monkeypatch):
@@ -91,7 +112,9 @@ def test_login_popup_post_success_saves_and_reports(tmp_path, monkeypatch):
     assert r.get_json()["ok"] is True
     import settings_store as ss
     assert ss.get("LIDL_USER") == "u@example.com"
-    assert ss.get("LIDL_PASS") == "secret"
+    import secret_store as enc
+    assert enc.get_secret("LIDL_PASS") == "secret"
+    assert ss.get("LIDL_PASS").startswith("enc$")
 
 
 def test_login_popup_post_failure_returns_401(tmp_path, monkeypatch):
@@ -107,7 +130,10 @@ def test_dashboard_wires_login_popup(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     body = c.get("/").get_data(as_text=True)
     assert 'id="login-btn"' in body
-    assert "window.open('/fetch/login'" in body
+    # popup opens the REAL Lidl site (manual credentials, no automation
+    # fingerprint); closing that window is the intercept signal for a retry
+    assert "lidl-hellas.gr" in body
+    assert "pop.closed" in body
     assert "lidl-login-ok" in body
 
 
@@ -194,6 +220,15 @@ def test_launch_hides_automation_flag():
 
 
 class _OverloadPage(_FakePage):
+    def click(self, sel, timeout=5000):
+        # Lidl swallows every submit under throttling; page never leaves
+        self.clicked.append(sel)
+        if "password" not in sel and not self.advanced:
+            self.advanced = True
+            self.url = "https://www.lidl-hellas.gr/user-api/login?step=password"
+        else:
+            self.submit_clicks += 1
+
     def press(self, sel, key, timeout=None):
         pass  # Lidl swallows the submit under throttling; page never leaves
 
@@ -234,3 +269,52 @@ def test_login_post_reports_overload_once_then_cools_down(tmp_path, monkeypatch)
     r2 = c.post("/fetch/login", data={"email": "u@example.com", "password": "secret"})
     assert r2.status_code == 429
     assert time.time() < appmod._LOGIN_COOLDOWN_UNTIL
+
+
+def test_classify_failure_notes():
+    import fetch_lidl as fl
+    assert fl._classify_failure("Υπερπληρότητα συστήματος") == "overload"
+    assert fl._classify_failure("System Overload, retry") == "overload"
+    assert fl._classify_failure("Συνέχεια σε δημιουργία λογαριασμού") == "no-account"
+    assert fl._classify_failure("Λάθος κωδικός, δοκιμάστε ξανά") == "bad-password"
+    assert fl._classify_failure("some unrelated page") is None
+
+
+def test_submit_uses_blue_button_not_header(monkeypatch):
+    import fetch_lidl as fl
+    monkeypatch.setattr(fl, "get_lidl_creds", lambda: ("u@example.com", "secret"))
+    page = _two_step_page()
+    assert fl.try_auto_login(page) is True
+    blue = [s for s in page.clicked if 'type="button"' in s]
+    assert blue, "submit must target the type=button form button"
+
+
+def test_unknown_email_reports_no_account(monkeypatch):
+    import fetch_lidl as fl
+    monkeypatch.setattr(fl, "get_lidl_creds", lambda: ("u@example.com", "secret"))
+
+    class _NoPassword(_FakePage):
+        def wait_for_selector(self, *a, **k):
+            raise Exception("still email stage")
+
+        def inner_text(self, sel):
+            return "Συνέχεια σε δημιουργία λογαριασμού"
+
+    assert fl.try_auto_login(_NoPassword()) is False
+    assert fl.LAST_LOGIN_NOTE == "no-account"
+
+
+def test_login_post_reports_bad_password(tmp_path, monkeypatch):
+    import fetch_lidl as fl
+    import app as appmod
+    c = _client(tmp_path, monkeypatch)
+
+    def failed_bad_pw(email, pw):
+        fl.LAST_LOGIN_NOTE = "bad-password"
+        return False
+
+    monkeypatch.setattr(fl, "attempt_login", failed_bad_pw)
+    monkeypatch.setattr(appmod, "_LOGIN_COOLDOWN_UNTIL", 0.0, raising=False)
+    r = c.post("/fetch/login", data={"email": "u@example.com", "password": "secret"})
+    assert r.status_code == 401
+    assert "password" in r.get_json()["error"].lower()

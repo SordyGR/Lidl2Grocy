@@ -1,0 +1,141 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<h1>Price comparison & ABC</h1>
+<form id="ctl" method="get" onsubmit="return false">
+<select name="metric" id="metric">
+<option value="spend">Spend</option>
+<option value="quantity">Quantity</option>
+<option value="frequency">Frequency</option>
+</select>
+<label>Top <input name="top" id="top" size="3" value="5"></label>
+<button id="apply" class="btn" type="button">Apply</button>
+<div id="picker">
+<button id="picker-btn" type="button">Add products… (<span id="sel-count">0</span> selected)</button>
+<div id="picker-panel" style="display:none">
+<input id="picker-search" placeholder="type to filter…" size="24" autocomplete="off">
+<div id="picker-list"></div>
+</div>
+</div>
+<div id="chips"></div>
+</form>
+<div class="card"><canvas id="trend"></canvas></div>
+<div class="cols" style="margin-top:1rem">
+<div class="card"><h2>ABC · pareto</h2><canvas id="pareto"></canvas></div>
+<div class="card"><h2>Stats</h2>
+<table id="stats"><thead><tr><th>Product</th><th>Buys</th><th>Qty</th><th>Spent</th>
+<th>Min</th><th>Max</th><th>Last</th><th>ABC</th></tr></thead><tbody id="stats-body"></tbody></table>
+</div>
+</div>
+<script>
+const PALETTE = ["#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f",
+  "#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac"];
+let rankRows = [];
+let selected = [];
+let trendChart = null, paretoChart = null;
+const metricEl = document.getElementById("metric");
+const topEl = document.getElementById("top");
+const panel = document.getElementById("picker-panel");
+const searchEl = document.getElementById("picker-search");
+const listEl = document.getElementById("picker-list");
+function abcPill(cls){
+  if (cls === "A") return '<span class="pill pill-green">A</span>';
+  if (cls === "B") return '<span class="pill pill-amber">B</span>';
+  return '<span class="pill pill-red">C</span>';
+}
+function topN(){
+  let n = parseInt(topEl.value, 10);
+  if (isNaN(n)) n = 5;
+  return Math.max(1, Math.min(n, 50));
+}
+async function loadRank(){
+  const r = await fetch("/api/abc_analysis?metric="
+    + encodeURIComponent(metricEl.value) + "&top=50");
+  rankRows = (await r.json()).rows;
+}
+function seedFromTop(){
+  selected = rankRows.slice(0, topN()).map(r=>r.clean);
+}
+function drawList(){
+  const f = searchEl.value.trim().toLowerCase();
+  listEl.innerHTML = "";
+  rankRows.filter(r=>!f || r.clean.toLowerCase().includes(f)).forEach(r=>{
+    const on = selected.includes(r.clean);
+    const d = document.createElement("div");
+    d.textContent = (on ? "☑ " : "☐ ") + r.clean + " (" + r.class + ")";
+    d.style.cursor = "pointer";
+    d.onclick = ()=>{ togglePick(r.clean); };
+    listEl.appendChild(d);
+  });
+}
+function togglePick(clean){
+  if (selected.includes(clean)) selected = selected.filter(c=>c!==clean);
+  else selected.push(clean);
+  drawList(); render();
+}
+async function render(){
+  const cleans = [...new Set(selected)];
+  document.getElementById("sel-count").textContent = cleans.length;
+  const hist = await (await fetch("/api/price_history_multi?"
+    + cleans.map(c=>"clean="+encodeURIComponent(c)).join("&"))).json();
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById("trend"), {type:"line",
+    data:{datasets: cleans.map((c,i)=>({label:c,
+      data:(hist[c]||[]).map(x=>({x:x.d, y:x.p})), spanGaps:true,
+      borderColor: PALETTE[i % PALETTE.length]}))},
+    options:{scales:{x:{type:"category"}}}});
+  if (paretoChart) paretoChart.destroy();
+  const rows = rankRows.slice(0, topN());
+  paretoChart = new Chart(document.getElementById("pareto"), {type:"bar",
+    data:{labels: rows.map(r=>r.clean),
+      datasets:[{label:metricEl.value, data:rows.map(r=>r.value),
+        backgroundColor: rows.map(r=>r.class==="A"?"#59a14f":r.class==="B"?"#edc948":"#e15759")},
+        {label:"cum %", data:rows.map(r=>r.cum_pct), type:"line", yAxisID:"y1"}]},
+    options:{scales:{y1:{position:"right", min:0, max:100}}}});
+  const tb = document.getElementById("stats-body");
+  tb.innerHTML = "";
+  cleans.forEach(c=>{
+    const pts = hist[c]||[], ps = pts.map(x=>x.p);
+    const cls = (rankRows.find(r=>r.clean===c)||{}).class || "–";
+    const tr = document.createElement("tr");
+    const tds = [];
+    for (let k=0;k<8;k++) tds.push(document.createElement("td"));
+    tds[0].textContent = c; tds[1].textContent = pts.length;
+    tds[2].textContent = pts.reduce((s,x)=>s+x.q,0).toFixed(2);
+    tds[3].textContent = pts.reduce((s,x)=>s+x.p*x.q,0).toFixed(2);
+    tds[4].textContent = ps.length?Math.min(...ps).toFixed(2):"–";
+    tds[5].textContent = ps.length?Math.max(...ps).toFixed(2):"–";
+    tds[6].textContent = ps.length?ps[ps.length-1].toFixed(2):"–";
+    tds[7].innerHTML = abcPill(cls);
+    tds.forEach(td=>tr.appendChild(td));
+    tb.appendChild(tr);
+  });
+  const chips = document.getElementById("chips");
+  chips.innerHTML = "";
+  cleans.forEach(c=>{
+    const s = document.createElement("span"); s.textContent = c + " ×";
+    s.style.cursor = "pointer";
+    s.onclick = ()=>{ togglePick(c); };
+    chips.appendChild(s);
+  });
+}
+document.getElementById("picker-btn").onclick = (e)=>{
+  e.stopPropagation();
+  panel.style.display = panel.style.display === "none" ? "" : "none";
+  if (panel.style.display !== "none") { searchEl.value = ""; drawList(); searchEl.focus(); }
+};
+document.addEventListener("click", (e)=>{
+  if (!document.getElementById("picker").contains(e.target)) panel.style.display = "none";
+});
+document.addEventListener("keydown", (e)=>{
+  if (e.key === "Escape") panel.style.display = "none";
+});
+searchEl.addEventListener("input", drawList);
+document.getElementById("apply").onclick = async ()=>{
+  await loadRank(); seedFromTop(); drawList(); render();
+};
+metricEl.onchange = async ()=>{
+  await loadRank(); seedFromTop(); drawList(); render();
+};
+(async function boot(){ await loadRank(); seedFromTop(); drawList(); render(); })();
+</script>
+{% endblock %}
