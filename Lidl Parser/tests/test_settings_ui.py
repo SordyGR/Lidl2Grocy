@@ -38,9 +38,10 @@ def test_password_preserved_on_edit_without_password(tmp_path, monkeypatch):
                               "GROCY_API_KEY": "k", "LIDL_USER": "u",
                               "LIDL_PASS": "secret123"}, follow_redirects=True)
     import settings_store as ss
-    assert ss.get("LIDL_PASS") == "secret123"
+    import secret_store as enc
+    assert enc.get_secret("LIDL_PASS") == "secret123"
     # Grocy-only edit: form omits the LIDL_PASS key entirely
     c.post("/settings", data={"GROCY_URL": "https://g.example/api",
                               "GROCY_API_KEY": "k2",
                               "LIDL_USER": "u"}, follow_redirects=True)
-    assert ss.get("LIDL_PASS") == "secret123"
+    assert enc.get_secret("LIDL_PASS") == "secret123"

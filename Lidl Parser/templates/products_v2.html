@@ -1,0 +1,178 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<h1>Products</h1>
+{% if not grocy_configured %}
+<p class="notice-warn">Grocy not configured — set GROCY_URL (with /api) + GROCY_API_KEY to enable linking.</p>
+{% elif grocy_error %}
+<p class="notice-err">Grocy error — {{ grocy_error }}</p>
+{% endif %}
+<datalist id="grocy-names">
+{% for n in grocy_names %}<option value="{{ n }}">{% endfor %}
+</datalist>
+<form method="get">
+<input id="q" name="q" value="{{ q }}" placeholder="search raw / clean / category / barcode" size="40">
+<select name="filter"><option value="all" {% if filt=="all" %}selected{% endif %}>all</option>
+<option value="unmapped" {% if filt=="unmapped" %}selected{% endif %}>unmapped</option>
+<option value="needs-review" {% if filt=="needs-review" %}selected{% endif %}>needs review</option></select>
+<select name="cat"><option value="">all categories</option>
+{% set catlist = cats|map(attribute='category')|list %}
+{% for c in cats %}<option value="{{ c["category"] }}" {% if c["category"]==cat %}selected{% endif %}>{{ c["category"] }}</option>{% endfor %}
+</select>
+<select name="grocy"><option value="all" {% if gf=="all" %}selected{% endif %}>all + unlinked</option>
+<option value="linked" {% if gf=="linked" %}selected{% endif %}>linked</option>
+<option value="unlinked" {% if gf=="unlinked" %}selected{% endif %}>unlinked</option></select>
+<select name="track"><option value="all" {% if tf=="all" %}selected{% endif %}>tracked + skipped</option>
+<option value="tracked" {% if tf=="tracked" %}selected{% endif %}>tracked</option>
+<option value="skipped" {% if tf=="skipped" %}selected{% endif %}>skipped</option></select>
+<input type="hidden" name="sort" value="{{ sort }}">
+<input type="hidden" name="dir" value="{{ direction }}">
+<select name="per" title="rows per page">
+{% for n in [25, 50, 100] %}<option value="{{ n }}" {% if per==n %}selected{% endif %}>{{ n }} / page</option>{% endfor %}
+</select>
+<button class="btn">Filter</button>
+</form>
+<p>
+<a class="chip {% if filt=='all' %}on{% endif %}" href="?q={{ q }}&filter=all&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&per={{ per }}">All</a>
+<a class="chip {% if filt=='unmapped' %}on{% endif %}" href="?q={{ q }}&filter=unmapped&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&per={{ per }}">Unmapped</a>
+<a class="chip {% if filt=='needs-review' %}on{% endif %}" href="?q={{ q }}&filter=needs-review&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&per={{ per }}">Needs review</a>
+</p>
+{% if new_items %}
+<h2>New raws from receipts (not in products)</h2>
+{% for n in new_items %}<div class="row-card">
+<form method="post" action="/mappings/add">
+<b>{{ n["raw"] }}</b><input type="hidden" name="raw" value="{{ n["raw"] }}">
+<input name="clean" placeholder="clean name">
+<input name="new_category" placeholder="category" size="12">
+<button class="btn">Add</button>
+</form></div>{% endfor %}
+{% endif %}
+<h2 id="rowcount">{{ count }} products — page {{ page }} of {{ pages }}</h2>
+{% if pages > 1 %}
+<p>{% if page > 1 %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ sort }}&dir={{ direction }}&per={{ per }}&page={{ page - 1 }}">← Prev</a>{% endif %}
+{% if page < pages %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ sort }}&dir={{ direction }}&per={{ per }}&page={{ page + 1 }}">Next →</a>{% endif %}</p>
+{% endif %}
+{% macro sortlink(col, label) %}{% if sort == col and direction == "asc" %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ col }}&dir=desc&per={{ per }}">{{ label }} ▲</a>{% elif sort == col %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ col }}&dir=asc&per={{ per }}">{{ label }} ▼</a>{% else %}<a href="?q={{ q }}&filter={{ filt }}&cat={{ cat }}&grocy={{ gf }}&track={{ tf }}&sort={{ col }}&dir=asc&per={{ per }}">{{ label }}</a>{% endif %}{% endmacro %}
+<form id="bulkform" method="post" action="/mappings/bulk-update">
+<input type="hidden" name="_q" value="{{ q }}">
+<button class="btn">Save selected</button>
+</form>
+<div id="product-list">
+<table id="product-table">
+<tr><th>☐</th><th>{{ sortlink("raw", "Raw") }}</th><th>{{ sortlink("clean", "Clean") }}</th><th>{{ sortlink("category", "Category") }}</th><th>{{ sortlink("barcode", "Barcode") }}</th><th>Grocy</th><th></th></tr>
+{% for r in rows %}<tr data-bulk-row>
+<td><input type="checkbox" class="bulksel"></td>
+<form method="post" action="/mappings/update">
+<td><a href="/products/{{ r["id"] }}"><b>{{ r["raw"] }}</b></a><input type="hidden" name="raw" value="{{ r["raw"] }}"><input type="hidden" name="_q" value="{{ q }}">
+<input type="hidden" name="brand" value="{{ r["brand"] or "" }}">
+<input type="hidden" name="unit" value="{{ r["unit"] or "" }}">
+<input type="hidden" name="notes" value="{{ r["notes"] or "" }}"></td>
+<td><input name="clean" value="{{ r["clean"] }}"></td>
+<td><select name="category" class="catselect">
+{% if r["category"] not in catlist %}<option value="{{ r["category"] }}" selected>{{ r["category"] }}</option>{% endif %}
+{% for c in cats %}<option value="{{ c["category"] }}" {% if c["category"]==r["category"] %}selected{% endif %}>{{ c["category"] }}</option>{% endfor %}
+<option value="__new__">+ New category…</option>
+</select>
+<input name="new_category" class="newcat" placeholder="new category name" style="display:none" size="14"></td>
+<td><input name="barcode" value="{{ r["barcode"] or "" }}" size="12"></td>
+<td><button>Save</button></td>
+</form>
+<td>
+{% if r["grocy_id"] %}
+<span class="pill pill-green">Grocy #{{ r["grocy_id"] }} {{ r["grocy_name"] }}</span>
+{% if r["is_orphan"] %}
+<span class="notice-err" title="No longer in Grocy catalog">stale link — relink?</span>
+{% endif %}
+<form method="post" action="/mappings/unlink" style="display:inline">
+<input type="hidden" name="raw" value="{{ r["raw"] }}">
+<button>Unlink</button>
+</form>
+{% else %}
+<span class="pill pill-amber">Unlinked</span>
+<form method="post" action="/mappings/link">
+<input type="hidden" name="raw" value="{{ r["raw"] }}">
+<input type="hidden" name="_q" value="{{ q }}">
+<select name="grocy_id">
+{% for s in r["suggestions"] %}
+<option value="{{ s["grocy_id"] }}">★ #{{ s["grocy_id"] }} {{ s["grocy_name"] }} ({{ s["reason"] }} {{ s["score"] }})</option>
+{% endfor %}
+{% for g in grocy_products %}
+<option value="{{ g["id"] }}">#{{ g["id"] }} {{ g["name"] }}</option>
+{% endfor %}
+</select>
+<input name="grocy_name" placeholder="Grocy name (optional)" size="14" list="grocy-names">
+<button class="btn">Link</button>
+</form>
+{% if grocy_configured %}
+<a href="/mappings/new-item?raw={{ r["raw"]|urlencode }}">Create in Grocy…</a>
+{% endif %}
+{% endif %}
+</td>
+<td>
+<form method="post" action="/mappings/track" style="display:inline">
+<input type="hidden" name="raw" value="{{ r["raw"] }}">
+<input type="hidden" name="_q" value="{{ q }}">
+{% if r["grocy_track"] == 0 %}
+<input type="hidden" name="track" value="1"><button>Track</button>
+{% else %}
+<input type="hidden" name="track" value="0"><button>Skip</button>
+{% endif %}
+</form>
+{% if r["grocy_track"] == 0 %}<span class="pill pill-grey">skipped</span>{% endif %}
+{% if r["needs_review"] %}<span class="pill pill-amber">review</span>{% endif %}
+<br><a href="/products/{{ r["id"] }}">Open detail →</a>
+</td>
+</tr>{% endfor %}
+</table>
+</div>
+<script>
+(function(){
+  var input = document.getElementById('q');
+  if (!input) return;
+  var timer = null;
+  input.addEventListener('input', function(){
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function(){
+      var params = new URLSearchParams(new FormData(input.form)).toString();
+      fetch('/products?' + params, {headers: {'X-Requested-With': 'fetch'}})
+        .then(function(r){ return r.text(); })
+        .then(function(html){
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var list = doc.getElementById('product-list');
+          var count = doc.getElementById('rowcount');
+          if (list) document.getElementById('product-list').innerHTML = list.innerHTML;
+          if (count) document.getElementById('rowcount').textContent = count.textContent;
+        });
+    }, 250);
+  });
+})();
+document.querySelectorAll('select.catselect').forEach(function(s){
+  var inp = s.parentElement.querySelector('input.newcat');
+  s.addEventListener('change', function(){
+    if (s.value === '__new__') { inp.style.display = ''; inp.focus(); }
+    else { inp.style.display = 'none'; inp.value = ''; }
+  });
+});
+document.getElementById('bulkform').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var form = ev.target, idx = 0;
+  document.querySelectorAll('tr[data-bulk-row]').forEach(function(tr){
+    var box = tr.querySelector('input.bulksel');
+    if (!box || !box.checked) return;
+    var get = function(name){ var el = tr.querySelector('[name="'+name+'"]'); return el ? el.value : ''; };
+    var pairs = {raw: get('raw'), clean: get('clean'), category: get('category'),
+      new_category: get('new_category'), barcode: get('barcode'), brand: get('brand'),
+      unit: get('unit'), notes: get('notes')};
+    Object.keys(pairs).forEach(function(k){
+      var h = document.createElement('input');
+      h.type = 'hidden'; h.name = k + '_' + idx; h.value = pairs[k];
+      form.appendChild(h);
+    });
+    idx++;
+  });
+  var h = document.createElement('input');
+  h.type = 'hidden'; h.name = 'count'; h.value = idx;
+  form.appendChild(h);
+  form.submit();
+});
+</script>
+{% endblock %}

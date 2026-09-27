@@ -3,6 +3,12 @@
 <h1>{{ r["filename"] }} <small>{{ r["receipt_date"] }}</small></h1>
 <p>{{ r["item_count"] }} items — {{ "%.2f"|format(r["total"]) }} €</p>
 <p>Paid with {{ paid_with }}</p>
+<form method="post" action="/receipts/{{ r["id"] }}/card" style="display:inline">
+<input name="last4" size="4" maxlength="4" placeholder="card" value="{{ r["card_last4"] or "" }}">
+<button title="4 digits, or empty for cash">Set card</button>
+</form>
+<form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
+onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>Delete receipt</button></form>
 <table><tr><th>Raw</th><th>Clean</th><th>Cat</th><th>Qty</th><th>Unit</th><th>Disc</th><th>Final</th><th>Match</th><th>Owner</th></tr>
 {% for i in items %}<tr>
 <td>{{ i["raw"] }}</td><td>{% if i["raw"] in pids %}<a href="/products/{{ pids[i["raw"]] }}">{{ i["clean"] }}</a>{% else %}{{ i["clean"] }}{% endif %}</td><td>{{ i["category"] }}</td>

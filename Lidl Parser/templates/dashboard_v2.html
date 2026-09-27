@@ -1,0 +1,121 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+<div>
+  <button id="sync-btn" class="btn" type="button">Sync receipts</button>
+  <button id="login-btn" class="btn btn-ghost" type="button" hidden>Log in</button>
+  <span id="sync-status"></span>
+  <div id="last-sync" class="sub"></div>
+</div>
+<details>
+  <summary>Paste receipt text (fallback when auto-login fails)</summary>
+  <form method="post" action="/fetch/paste">
+    <textarea name="text" rows="6" cols="70" placeholder="Paste full Ctrl+A page text here"></textarea><br>
+    <input name="tid" placeholder="transaction id (optional)">
+    <button class="btn">Import pasted receipt</button>
+  </form>
+</details>
+<div class="kpis">
+  <div class="kpi-card"><span>Total spent</span><b>{{ "%.2f"|format(k["spent"]) }} €</b></div>
+  <div class="kpi-card"><span>Receipts</span><b>{{ k["receipts"] }}</b></div>
+  <div class="kpi-card"><span>Items</span><b>{{ k["items"] }}</b></div>
+  <div class="kpi-card"><span>Products mapped</span><b>{{ k["products"] }}</b></div>
+  <div class="kpi-card"><span>Unmapped items</span><b>{{ k["unmapped"] }}</b></div>
+</div>
+<div class="grid2">
+<div class="card"><h2>Monthly spend</h2><canvas id="monthly"></canvas></div>
+<div class="card"><h2>By category</h2>
+<form method="get" id="pieform">
+<select name="pie" onchange="document.getElementById('pieform').submit()">
+<option value="" {% if not pie %}selected{% endif %}>all time</option>
+<option value="this_week" {% if pie=="this_week" %}selected{% endif %}>this week</option>
+<option value="last_week" {% if pie=="last_week" %}selected{% endif %}>last week</option>
+<option value="30d" {% if pie=="30d" %}selected{% endif %}>last 30 days</option>
+<option value="last_month" {% if pie=="last_month" %}selected{% endif %}>last month</option>
+<option value="custom" {% if pie=="custom" %}selected{% endif %}>range…</option>
+</select>
+{% if pie=="custom" %}
+<input type="date" name="from" value="{{ pie_from }}">
+<input type="date" name="to" value="{{ pie_to }}">
+<button class="btn">Apply</button>
+{% endif %}
+</form>
+<canvas id="cats"></canvas></div>
+</div>
+<div class="grid2">
+<div class="card"><h2>Recent receipts</h2>
+{% for r in recent %}<div class="row-card"><b>{{ r["receipt_date"] }}</b>
+<a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a>
+<span class="sub">{{ r["item_count"] }} · {{ "%.2f"|format(r["total"]) }} €</span></div>{% endfor %}
+</div>
+<div class="card"><h2>Top products</h2>
+{% for t in top %}<div class="row-card"><a href="/prices?clean={{ t["clean"] }}">{{ t["clean"] }}</a>
+<span class="sub">{{ t["n"] }} · {{ "%.2f"|format(t["total"]) }} €</span></div>{% endfor %}
+</div>
+</div>
+{% if user_totals %}
+<div class="card" style="margin-top:1rem"><h2>Spending by user</h2>
+<table><tr><th>User</th><th>Total</th></tr>
+{% for u in user_totals %}<tr><td>{{ u["n"] }}</td><td>{{ u["total"] }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+<script>
+const monthly = {{ monthly|map(attribute='m')|list|tojson }};
+const mvals = {{ monthly|map(attribute='total')|list|tojson }};
+new Chart(document.getElementById('monthly'), {type:'bar',
+  data:{labels:monthly, datasets:[{data:mvals, backgroundColor:'#4E79A7'}]}, options:{plugins:{legend:{display:false}}}});
+const cats = {{ by_cat|map(attribute='c')|list|tojson }};
+const cvals = {{ by_cat|map(attribute='total')|list|tojson }};
+new Chart(document.getElementById('cats'), {type:'doughnut',
+  data:{labels:cats, datasets:[{data:cvals}]}});
+</script>
+<script>
+(function() {
+  const btn = document.getElementById('sync-btn');
+  const loginBtn = document.getElementById('login-btn');
+  const status = document.getElementById('sync-status');
+  const lastSync = document.getElementById('last-sync');
+  let timer = null;
+  let awaiting = false;
+  async function refreshStatus() {
+    const r = await fetch('/api/fetch_status');
+    const s = await r.json();
+    if (s.last_sync) lastSync.textContent = 'Last sync: ' + s.last_sync;
+    if (s.running) { status.textContent = 'Syncing…'; return; }
+    if (timer) { clearInterval(timer); timer = null; }
+    btn.disabled = false;
+    if (s.error) {
+      status.textContent = 'Error: ' + s.error;
+      awaiting = false;
+      const needLogin = /login|sign-?in|overload|refus|credential|paste|settings/i.test(s.error);
+      loginBtn.hidden = !needLogin;
+    } else if (s.result !== null && s.result !== undefined) {
+      status.textContent = 'Done: ' + s.result + ' new/skipped/needs-review';
+      if (awaiting) { awaiting = false; location.reload(); }
+    }
+  }
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    status.textContent = 'Starting…';
+    const r = await fetch('/fetch/run', {method: 'POST'});
+    const j = await r.json();
+    if (!j.started) { status.textContent = j.reason || 'Already running'; btn.disabled = false; return; }
+    status.textContent = 'Syncing…';
+    awaiting = true;
+    timer = setInterval(refreshStatus, 3000);
+  });
+  loginBtn.addEventListener('click', () => {
+    const pop = window.open('{{ real_login_url }}', 'lidllogin', 'width=900,height=700');
+    if (!pop) { status.textContent = 'Popup blocked — allow popups, then retry.'; return; }
+    status.textContent = 'Log in on the Lidl site… (closing that window retries sync)';
+    const watch = setInterval(() => {
+      if (pop.closed) { clearInterval(watch); status.textContent = 'Login window closed — retrying sync…'; btn.click(); }
+    }, 1500);
+  });
+  window.addEventListener('message', (e) => {
+    if (e.data === 'lidl-login-ok') btn.click();
+  });
+  refreshStatus();
+})();
+</script>
+{% endblock %}

@@ -9,6 +9,21 @@
 <body>
 <h1>Sign in</h1>
 <p id="msg"></p>
+<details open>
+<summary>Manual login on the real Lidl site (recommended — never blocked)</summary>
+<p><a href="{{ real_login_url }}" target="_blank" rel="noopener">Open lidl-hellas.gr purchase history →</a>
+log in there with your own hands, then close that tab and come back here.
+This window watches that tab: when you close it, the dashboard retries sync automatically.</p>
+</details>
+<details>
+<summary>Pasted receipt (works even if sync keeps failing)</summary>
+<form method="post" action="/fetch/paste">
+<textarea name="text" rows="8" cols="48" placeholder="On lidl-hellas.gr open a receipt, Ctrl+A, Ctrl+C, paste here"></textarea><br>
+<input name="tid" placeholder="transaction id (optional)">
+<button type="submit">Import pasted receipt</button>
+</form>
+</details>
+<hr>
 <form id="login-form" method="post" action="/fetch/login">
   <label>Email <input type="text" name="email" value="{{ email }}" autocomplete="username"></label>
   <label>Password <input type="password" name="password" autocomplete="current-password"></label>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-theme="{{ theme }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lidl Parser</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='v2.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body class="v2">
+<nav>
+  <span class="brand">Lidl Parser</span>
+  <a href="/" class="{% if request.path=='/' %}active{% endif %}">Dashboard</a>
+  <a href="/products" class="{% if request.path.startswith('/products') %}active{% endif %}">Products</a>
+  <a href="/receipts" class="{% if request.path.startswith('/receipts') %}active{% endif %}">Receipts</a>
+  <a href="/upload">Upload</a>
+  <a href="/prices" class="{% if request.path.startswith('/prices') %}active{% endif %}">Prices</a>
+  <a href="/settings">Settings</a>
+  <span class="spacer"></span>
+  <a href="/export.csv">Export CSV</a>
+  <a href="/ui/v1" title="Back to the current UI">v1 UI</a>
+  {% if theme == "dark" %}
+  <a class="theme-toggle" href="{{ url_for('theme_set', mode='light') }}">☀ Light</a>
+  {% elif theme == "light" %}
+  <a class="theme-toggle" href="{{ url_for('theme_set', mode='dark') }}">🌙 Dark</a>
+  {% else %}
+  <a class="theme-toggle" href="{{ url_for('theme_set', mode='dark') }}">🌙 Dark</a>
+  {% endif %}
+</nav>
+<main>
+{% with messages = get_flashed_messages() %}
+{% if messages %}<div class="flash">{% for m in messages %}<p>{{ m }}</p>{% endfor %}</div>{% endif %}
+{% endwith %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

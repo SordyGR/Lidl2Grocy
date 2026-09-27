@@ -1,0 +1,16 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<h1>Receipts</h1>
+<p><a class="btn btn-ghost" href="/export.csv">Export CSV (last 30 days)</a>
+<a class="btn btn-ghost" href="/upload">Upload</a></p>
+<form method="post" action="/receipts/rescan-cards" style="display:inline">
+<button title="Fill missing card digits from saved receipt texts">Rescan missing cards</button>
+</form>
+{% for r in rows %}<div class="row-card"><b>{{ r["receipt_date"] }}</b>
+<a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a>
+<span class="sub">{{ r["item_count"] }} items · {{ "%.2f"|format(r["total"]) }} €</span>
+<form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
+      onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')">
+<button>Delete</button>
+</form></div>{% endfor %}
+{% endblock %}

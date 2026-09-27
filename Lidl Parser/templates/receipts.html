@@ -2,9 +2,14 @@
 {% block content %}
 <h1>Receipts</h1>
 <p><a href="/export.csv">Export CSV (last 30 days)</a></p>
-<table><tr><th>Date</th><th>File</th><th>Items</th><th>Total €</th></tr>
+<form method="post" action="/receipts/rescan-cards" style="display:inline">
+<button title="Fill missing card digits from saved receipt texts">Rescan missing cards</button>
+</form>
+<table><tr><th>Date</th><th>File</th><th>Items</th><th>Total €</th><th></th></tr>
 {% for r in rows %}<tr><td>{{ r["receipt_date"] }}</td>
 <td><a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a></td>
-<td>{{ r["item_count"] }}</td><td>{{ "%.2f"|format(r["total"]) }}</td></tr>{% endfor %}
+<td>{{ r["item_count"] }}</td><td>{{ "%.2f"|format(r["total"]) }}</td>
+<td><form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
+onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>Delete</button></form></td></tr>{% endfor %}
 </table>
 {% endblock %}
