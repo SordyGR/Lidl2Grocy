@@ -3,13 +3,25 @@ set -eu
 
 export DISPLAY="${DISPLAY:-:99}"
 
-# Keep the interactive Chromium display inside the container. Docker publishes
-# the noVNC port on host loopback only; remote users can reach it through SSH.
+# Start a complete virtual desktop so headed Chromium can be viewed remotely.
 Xvfb "$DISPLAY" -screen 0 1366x900x24 -nolisten tcp &
-sleep 1
-x11vnc -display "$DISPLAY" -forever -shared -localhost -rfbport 5900 -nopw &
-websockify --web=/usr/share/novnc 6080 127.0.0.1:5900 &
-sleep 1
+ready=0
+for _ in $(seq 1 30); do
+    if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+        ready=1
+        break
+    fi
+    sleep 1
+done
+if [ "$ready" -ne 1 ]; then
+    echo "Xvfb did not become ready on $DISPLAY" >&2
+    exit 1
+fi
+
+fluxbox -display "$DISPLAY" >/tmp/fluxbox.log 2>&1 &
+x11vnc -display "$DISPLAY" -forever -shared -localhost -rfbport 5900 -nopw -noxdamage &
+websockify 6080 127.0.0.1:5900 &
 
 python migrate.py
-exec gunicorn -w 1 --threads 4 -b 0.0.0.0:5090 app:app
+gunicorn -w 1 --threads 4 -b 127.0.0.1:5091 app:app &
+exec nginx -g 'daemon off;'

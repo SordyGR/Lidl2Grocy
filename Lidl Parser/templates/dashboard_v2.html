@@ -108,7 +108,7 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
   const containerBrowser = {{ container_browser|tojson }};
   loginBtn.addEventListener('click', async () => {
     if (containerBrowser) {
-      const pop = window.open('http://localhost:6080/vnc.html?autoconnect=true&resize=scale',
+      const pop = window.open('/browser/vnc.html?autoconnect=true&resize=scale&path=%2Fbrowser%2Fws',
                               'lidl-container-browser', 'width=1100,height=800');
       if (!pop) { status.textContent = 'Popup blocked — allow popups, then retry.'; return; }
     }
@@ -116,7 +116,7 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     loginBtn.disabled = true;
     status.textContent = containerBrowser
       ? 'Sign in to Lidl in the container browser; syncing will continue there. '
-        + 'For a remote host, tunnel port 6080: ssh -L 6080:127.0.0.1:6080 <user>@<server>.'
+        + 'The container browser viewer should open in a new tab on this server.'
       : 'Opening the Lidl sign-in browser…';
     const r = await fetch('/fetch/run', {
       method: 'POST',

@@ -40,9 +40,10 @@ python fetch_lidl.py --paste pasted.txt --tid 14000...  # manual fallback, no lo
 In Docker, the dashboard's **Log in** button opens the container's Chromium
 through noVNC. Sign in there once; its profile persists in the mounted `data/`
 directory at `data/.lidl-profile-docker/` and is reused for later syncs. Docker
-uses a separate profile from native Windows runs. Port 6080 is published on host
-localhost only. For a remote Docker host, forward it with
-`ssh -L 6080:127.0.0.1:6080 <user>@<server>` before clicking **Log in**.
+uses a separate profile from native Windows runs. The noVNC viewer is served
+through the same app URL under `/browser/`, so remote users can sign in without
+opening a second host port or setting up an SSH tunnel. The container starts a
+virtual desktop and window manager for headed Chromium.
 
 For local non-Docker runs, the **Log in** button opens a headed Chromium window
 on the machine running Flask. Session cookies persist in

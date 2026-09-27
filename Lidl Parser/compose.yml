@@ -3,7 +3,6 @@ services:
     build: .
     ports:
       - "5090:5090"
-      - "127.0.0.1:6080:6080"
     environment:
       DISPLAY: ":99"
       LIDL_BROWSER_LOGIN_ENABLED: "1"
