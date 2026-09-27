@@ -1,0 +1,2 @@
+# Keep shell scripts LF-only: Docker runs them under sh, which chokes on CR.
+*.sh text eol=lf

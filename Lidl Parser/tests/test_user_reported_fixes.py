@@ -66,5 +66,9 @@ def test_login_popup_links_real_lidl(tmp_path, monkeypatch):
     body = c.get("/fetch/login").get_data(as_text=True)
     assert "lidl-hellas.gr" in body
     assert "/fetch/paste" in body
+    # The dashboard no longer opens the real site (a tab on the user's
+    # device cannot share the container profile's cookies) — it opens
+    # the container browser viewer instead.
     dash = c.get("/").get_data(as_text=True)
-    assert "lidl-hellas.gr" in dash
+    assert "/browser/vnc.html?autoconnect=true" in dash
+    assert "path=%2Fwebsockify" in dash

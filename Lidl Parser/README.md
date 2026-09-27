@@ -45,6 +45,12 @@ through the same app URL under `/browser/`, so remote users can sign in without
 opening a second host port or setting up an SSH tunnel. The container starts a
 virtual desktop and window manager for headed Chromium.
 
+The viewer asks for a VNC password: set `VNC_PASSWORD` in the environment (or
+`.env`), or let the entrypoint generate one — it is stored chmod-600 at
+`data/.vnc-pass` and its location is printed to `docker compose logs` on first
+boot. The desktop is LAN-only by design; do not expose port 5090 to the
+internet without additional authentication.
+
 For local non-Docker runs, the **Log in** button opens a headed Chromium window
 on the machine running Flask. Session cookies persist in
 `data/.lidl-profile/` (git-ignored).

@@ -64,10 +64,14 @@ def _run_sync(headed=False):
 
 @app.route("/fetch/run", methods=["POST"])
 def fetch_run():
+    # Parse headed first: the manual container-browser login only polls
+    # locally while waiting (no Lidl traffic), so it is exempt from the
+    # automation-overload cooldown below.
+    headed = request.form.get("headed") == "1"
     with _LOGIN_LOCK:
         if _LOGIN["running"]:
             return jsonify({"started": False, "reason": "login in progress"})
-        if time.time() < _LOGIN_COOLDOWN_UNTIL:
+        if not headed and time.time() < _LOGIN_COOLDOWN_UNTIL:
             wait_min = int((_LOGIN_COOLDOWN_UNTIL - time.time()) / 60) + 1
             return jsonify({"started": False,
                             "reason": f"Lidl asked us to wait; retry in about {wait_min} min"})
@@ -75,7 +79,6 @@ def fetch_run():
         if _FETCH["running"]:
             return jsonify({"started": False, "reason": "already running"})
         _FETCH.update({"running": True, "result": None, "error": None})
-    headed = request.form.get("headed") == "1"
     threading.Thread(target=_run_sync, args=(headed,), daemon=True).start()
     return jsonify({"started": True})
 

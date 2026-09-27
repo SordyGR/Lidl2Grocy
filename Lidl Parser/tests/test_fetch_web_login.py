@@ -73,6 +73,7 @@ def _two_step_page():
 
 def test_auto_login_handles_two_step(monkeypatch):
     import fetch_lidl as fl
+    monkeypatch.setattr(fl, 'LAST_LOGIN_NOTE', None, raising=False)
     monkeypatch.setattr(fl, "get_lidl_creds", lambda: ("u@example.com", "secret"))
     page = _two_step_page()
     assert fl.try_auto_login(page) is True
@@ -238,6 +239,7 @@ class _OverloadPage(_FakePage):
 
 def test_overload_banner_sets_note(monkeypatch):
     import fetch_lidl as fl
+    monkeypatch.setattr(fl, 'LAST_LOGIN_NOTE', None, raising=False)
     monkeypatch.setattr(fl, "get_lidl_creds", lambda: ("u@example.com", "secret"))
     page = _OverloadPage()
     page.keyboard = _Kb(page)
@@ -253,7 +255,7 @@ def test_login_post_reports_overload_once_then_cools_down(tmp_path, monkeypatch)
     c = _client(tmp_path, monkeypatch)
 
     def failed_overload(email, pw):
-        fl.LAST_LOGIN_NOTE = "overload"
+        monkeypatch.setattr(fl, "LAST_LOGIN_NOTE", "overload")
         return False
 
     monkeypatch.setattr(fl, "attempt_login", failed_overload)
@@ -282,6 +284,7 @@ def test_classify_failure_notes():
 
 def test_submit_uses_blue_button_not_header(monkeypatch):
     import fetch_lidl as fl
+    monkeypatch.setattr(fl, 'LAST_LOGIN_NOTE', None, raising=False)
     monkeypatch.setattr(fl, "get_lidl_creds", lambda: ("u@example.com", "secret"))
     page = _two_step_page()
     assert fl.try_auto_login(page) is True
@@ -291,6 +294,7 @@ def test_submit_uses_blue_button_not_header(monkeypatch):
 
 def test_unknown_email_reports_no_account(monkeypatch):
     import fetch_lidl as fl
+    monkeypatch.setattr(fl, 'LAST_LOGIN_NOTE', None, raising=False)
     monkeypatch.setattr(fl, "get_lidl_creds", lambda: ("u@example.com", "secret"))
 
     class _NoPassword(_FakePage):
@@ -310,7 +314,7 @@ def test_login_post_reports_bad_password(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
 
     def failed_bad_pw(email, pw):
-        fl.LAST_LOGIN_NOTE = "bad-password"
+        monkeypatch.setattr(fl, "LAST_LOGIN_NOTE", "bad-password")
         return False
 
     monkeypatch.setattr(fl, "attempt_login", failed_bad_pw)

@@ -88,7 +88,7 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     if (s.error) {
       status.textContent = 'Error: ' + s.error;
       awaiting = false;
-      const needLogin = /login|sign-?in|overload|refus|credential|paste|settings/i.test(s.error);
+      const needLogin = /login|sign-?in|overload|refus|credential|paste|settings|purchase-detail|need review|fetched/i.test(s.error);
       loginBtn.hidden = !needLogin;
     } else if (s.result !== null && s.result !== undefined) {
       status.textContent = 'Done: ' + s.result + ' new/skipped/needs-review';
@@ -107,16 +107,13 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
   });
   const containerBrowser = {{ container_browser|tojson }};
   loginBtn.addEventListener('click', async () => {
-    if (containerBrowser) {
-      const pop = window.open('/browser/vnc.html?autoconnect=true&resize=scale&path=%2Fwebsockify',
-                              'lidl-container-browser', 'width=1100,height=800');
-      if (!pop) { status.textContent = 'Popup blocked — allow popups, then retry.'; return; }
-    }
+    // Start the headed sync first; open the viewer only once the server
+    // confirmed it started — otherwise the user stares at an empty
+    // desktop on cooldown/already-running rejections.
     btn.disabled = true;
     loginBtn.disabled = true;
     status.textContent = containerBrowser
-      ? 'Sign in to Lidl in the container browser; syncing will continue there. '
-        + 'The container browser viewer should open in a new tab on this server.'
+      ? 'Starting the container browser sync…'
       : 'Opening the Lidl sign-in browser…';
     const r = await fetch('/fetch/run', {
       method: 'POST',
@@ -128,6 +125,12 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
       btn.disabled = false;
       loginBtn.disabled = false;
       return;
+    }
+    if (containerBrowser) {
+      const pop = window.open('/browser/vnc.html?autoconnect=true&resize=scale&path=%2Fwebsockify',
+                              'lidl-container-browser', 'width=1100,height=800');
+      if (!pop) { status.textContent = 'Popup blocked — allow popups, then retry.'; }
+      else { status.textContent = 'Sign in to Lidl in the container browser; syncing will continue there.'; }
     }
     awaiting = true;
     timer = setInterval(refreshStatus, 3000);

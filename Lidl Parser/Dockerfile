@@ -11,4 +11,6 @@ RUN pip install --no-cache-dir -r requirements.txt \
  && python -m playwright install chromium --with-deps
 COPY . .
 COPY nginx.conf /etc/nginx/nginx.conf
+HEALTHCHECK --interval=60s --timeout=5s --start-period=90s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5091/')"
 CMD ["sh", "/app/docker-entrypoint.sh"]

@@ -294,12 +294,10 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
                         return 3
             tids = collect_tids(page, max_pages)
             if not tids:
-                LAST_SYNC_ERROR = (
-                    "No purchase-detail links were found on the Lidl history page. "
-                    f"Current page: {page.url}"
-                )
-                print(f"FETCH FAILED \u2014 {LAST_SYNC_ERROR}")
-                return 4
+                # An empty history (fresh account, or nothing listed)
+                # is not an error — there is simply nothing to fetch.
+                print("no purchase-detail links on the history page; nothing to fetch")
+                return 0
             conn = get_db()
             try:
                 seen_db = {r[0] for r in
