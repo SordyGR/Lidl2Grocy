@@ -1,0 +1,59 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<h1>Settings</h1>
+<div class="card">
+<form method="post">
+<h2>Extension (Firefox)</h2>
+<p class="sub">Receipts arrive via the Firefox extension using this token. Server-side Lidl login is removed.</p>
+<div class="field"><label>Token</label><input type="text" id="ext-token" readonly value="{{ v['EXT_INGEST_TOKEN'] }}" onclick="this.select()"></div>
+<button class="btn btn-ghost" type="button" onclick="navigator.clipboard.writeText(document.getElementById('ext-token').value)">Copy</button>
+</form>
+<form method="post" action="{{ url_for('settings_ext_regenerate') }}"><button class="btn btn-ghost">Regenerate token</button></form>
+</div>
+<div class="card">
+<form method="post">
+<h2>Grocy</h2>
+<div class="field"><label>URL</label><input type="text" name="GROCY_URL" value="{{ v['GROCY_URL'] }}"></div>
+<div class="field"><label>API key</label><input type="text" name="GROCY_API_KEY" value="{{ v['GROCY_API_KEY'] }}"></div>
+<p><a href="/api/grocy_status">Test Grocy connection</a></p>
+<button class="btn" type="submit">Save</button>
+</form>
+</div>
+<div class="card">
+<h2>Units</h2>
+<form method="post" action="{{ url_for('settings_units_refresh') }}">
+<button class="btn btn-ghost">Refresh from Grocy</button>
+</form>
+<table><tr><th>Name</th><th>Grocy id</th><th>Source</th></tr>
+{% for u in units %}<tr><td>{{ u['name'] }}</td><td>{{ u['grocy_id'] or '' }}</td><td>{{ u['source'] }}</td></tr>{% endfor %}
+</table>
+</div>
+<div class="card">
+<h2>Users</h2>
+<form method="post" action="{{ url_for('settings_user_add') }}">
+<div class="field"><label>Name</label><input type="text" name="name"></div>
+<button class="btn btn-ghost" type="submit">Add user</button>
+</form>
+<ul>
+{% for u in users %}
+<li>{{ u['name'] }}</li>
+{% endfor %}
+</ul>
+<h2>Cards</h2>
+<form method="post" action="{{ url_for('settings_card_link') }}">
+<div class="field"><label>Last 4</label><input type="text" name="last4" maxlength="4" pattern="\d{4}"></div>
+<div class="field"><label>User</label><select name="user_id">
+{% for u in users %}
+<option value="{{ u['id'] }}">{{ u['name'] }}</option>
+{% endfor %}
+</select></div>
+<button class="btn btn-ghost" type="submit">Link card</button>
+</form>
+<ul>
+{% for c in cards %}
+<li>{{ c['last4'] }} - {{ c['user_name'] }}</li>
+{% endfor %}
+</ul>
+<p class="sub">Note: Last-4 collisions (two cards sharing digits) map to one user.</p>
+</div>
+{% endblock %}

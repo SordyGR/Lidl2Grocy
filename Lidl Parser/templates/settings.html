@@ -4,8 +4,8 @@
 <form method="post">
 <h2>Extension (Firefox)</h2>
 <p><small>Receipts arrive via the Firefox extension using this token. Server-side Lidl login is removed.</small></p>
-<label>Token <input type="text" readonly value="{{ v['EXT_INGEST_TOKEN'] }}" onclick="this.select()"></label>
-<button type="button" onclick="navigator.clipboard.writeText(this.previousElementSibling.value)">Copy</button>
+<label>Token <input type="text" id="ext-token" readonly value="{{ v['EXT_INGEST_TOKEN'] }}" onclick="this.select()"></label>
+<button type="button" onclick="navigator.clipboard.writeText(document.getElementById('ext-token').value)">Copy</button>
 </form>
 <form method="post" action="{{ url_for('settings_ext_regenerate') }}"><button>Regenerate token</button></form>
 <form method="post">

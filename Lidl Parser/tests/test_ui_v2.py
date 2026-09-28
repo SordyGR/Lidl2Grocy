@@ -54,3 +54,24 @@ def test_v2_detail_receipts_prices_login(tmp_path, monkeypatch):
     conn.close()
     assert c.get(f"/products/{pid}").status_code == 200
     assert "v2.css" in c.get("/prices").get_data(as_text=True)
+
+
+def test_v2_settings_and_new_item(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    c.get("/ui/v2")
+    assert "v2.css" in c.get("/settings").get_data(as_text=True)
+    assert "v2.css" in c.get("/mappings/new-item?raw=RAWX").get_data(as_text=True)
+
+
+def test_v1_nav_links_v2_and_order_matches(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    v1 = c.get("/").get_data(as_text=True)
+    assert "/ui/v2" in v1
+    c.get("/ui/v2")
+    v2 = c.get("/").get_data(as_text=True)
+    assert "/ui/v1" in v2
+    import re
+    order = ["Dashboard", "Receipts", "Upload", "Products", "Prices", "Settings"]
+    pos1 = [v1.index(w) for w in order]
+    pos2 = [v2.index(w) for w in order]
+    assert pos1 == sorted(pos1) and pos2 == sorted(pos2)

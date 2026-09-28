@@ -114,6 +114,22 @@ python -m pytest -q        # 120 passed expected on Gamma
 Manual fallback never goes away: dashboard paste form, or
 `python fetch_lidl.py --paste pasted.txt --tid 14000...`.
 
+**Local headless sync (no extension, no Docker):** for local runs the CLI
+keeps its Chromium path. One-time setup (NOT in requirements.txt, so the
+Docker image stays slim):
+
+```bash
+pip install playwright && playwright install chromium
+python fetch_lidl.py --latest-only   # daily use (headless)
+python fetch_lidl.py --max 5         # cap history pages
+python fetch_lidl.py --headed        # opens a browser once; log in, rerun
+```
+
+Credentials come from Settings/`LIDL_USER` + encrypted `LIDL_PASS` (or
+`.env`); the signed-in session persists in `data/.lidl-profile/`
+(gitignored). Note Lidl sometimes refuses automated sign-in ("system
+overload") — wait ~30 min and try once, or use the extension instead.
+
 ## Usage wiki
 
 ### Dashboard

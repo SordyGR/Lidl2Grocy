@@ -1106,7 +1106,7 @@ def mapping_new_item():
             grocy_error = f"Grocy lookups unavailable: {str(e)[:150]}"
     except grocy_client.GrocyConfigError:
         grocy_configured = False
-    return render_template("item_new.html", prod=prod,
+    return render_template(_tpl("item_new.html"), prod=prod,
                            grocy_configured=grocy_configured,
                            grocy_error=grocy_error,
                            locations=lookups["locations"],
@@ -1340,7 +1340,7 @@ def settings():
            FROM card_map c JOIN users u ON u.id = c.user_id ORDER BY c.last4""").fetchall()]
     units = [dict(r) for r in conn.execute("SELECT id, grocy_id, name, source FROM units ORDER BY name").fetchall()]
     conn.close()
-    return render_template("settings.html", v=vals, users=users, cards=cards, units=units)
+    return render_template(_tpl("settings.html"), v=vals, users=users, cards=cards, units=units)
 
 
 @app.route("/settings/units-refresh", methods=["POST"])

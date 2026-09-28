@@ -11,9 +11,9 @@
 <nav>
   <span class="brand">Lidl Parser</span>
   <a href="/" class="{% if request.path=='/' %}active{% endif %}">Dashboard</a>
-  <a href="/products" class="{% if request.path.startswith('/products') %}active{% endif %}">Products</a>
   <a href="/receipts" class="{% if request.path.startswith('/receipts') %}active{% endif %}">Receipts</a>
   <a href="/upload">Upload</a>
+  <a href="/products" class="{% if request.path.startswith('/products') %}active{% endif %}">Products</a>
   <a href="/prices" class="{% if request.path.startswith('/prices') %}active{% endif %}">Prices</a>
   <a href="/settings">Settings</a>
   <span class="spacer"></span>

@@ -1,0 +1,39 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<h1>New Grocy item</h1>
+{% if not grocy_configured %}
+<p class="notice-warn">Grocy not configured — set GROCY_URL (with /api) + GROCY_API_KEY.</p>
+{% elif grocy_error %}
+<p class="notice-err">{{ grocy_error }}</p>
+{% endif %}
+<div class="card">
+<form method="post" action="/mappings/new-item">
+<input type="hidden" name="raw" value="{{ prod["raw"] }}">
+<fieldset><legend>Identity</legend>
+<div class="field"><label>Grocy name</label><input name="name" value="{{ prod["clean"] }}" size="30" required></div>
+<div class="field"><label>Brand</label><input name="brand" value="{{ prod["brand"] or "" }}" size="16"></div>
+<div class="field"><label>Barcode</label><input name="barcode" value="{{ prod["barcode"] or "" }}" size="16"></div>
+<div class="field"><label>Description</label><input name="description" size="40" placeholder="optional"></div>
+</fieldset>
+<fieldset><legend>Storage</legend>
+<div class="field"><label>Location</label><select name="location_id"><option value="">location…</option>
+{% for l in locations %}<option value="{{ l["id"] }}">{{ l["name"] }}</option>{% endfor %}</select></div>
+<div class="field"><label>Min stock</label><input name="min_stock" size="6" placeholder="0"></div>
+</fieldset>
+<fieldset><legend>Units</legend>
+<div class="field"><label>Purchase unit</label><select name="qu_purchase"><option value="">purchase unit…</option>
+{% for u in quantity_units %}<option value="{{ u["id"] }}">{{ u["name"] }}</option>{% endfor %}</select></div>
+<div class="field"><label>Stock unit</label><select name="qu_stock"><option value="">stock unit…</option>
+{% for u in quantity_units %}<option value="{{ u["id"] }}">{{ u["name"] }}</option>{% endfor %}</select></div>
+<div class="field"><label>Purchase→stock factor</label><input name="qu_factor" size="6" placeholder="1"></div>
+</fieldset>
+<fieldset><legend>Classification</legend>
+<div class="field"><label>Product group</label><select name="product_group_id"><option value="">group…</option>
+{% for g in groups %}<option value="{{ g["id"] }}">{{ g["name"] }}</option>{% endfor %}</select></div>
+<div class="field"><label>Parent product id</label><input name="parent_product_id" size="6" placeholder="optional"></div>
+</fieldset>
+<button class="btn" {% if not grocy_configured %}disabled{% endif %}>Create + link</button>
+<a href="/products">Cancel</a>
+</form>
+</div>
+{% endblock %}
