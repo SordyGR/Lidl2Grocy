@@ -27,14 +27,20 @@ python app.py       # -> http://127.0.0.1:5000
 Receipt `26-09-05.txt` parses to exactly 41.91 € (matches paper total).
 KG fix: `0,590 kg x 14,79` -> qty=0.59, unit=14.79 (old code got qty=1, unit=8.73).
 
-## Fetch (auto-download from Lidl Hellas)
+## Fetch (Firefox extension)
 
-```
-pip install -r requirements.txt
-playwright install chromium
-python fetch_lidl.py --latest-only   # daily use
-python fetch_lidl.py --max 5         # cap history pages
-python fetch_lidl.py --paste pasted.txt --tid 14000...  # manual fallback, no login
-```
+Server-side Lidl login is removed. Receipts arrive via the Firefox extension
+(`extension/`, Manifest V2, sideload at `about:debugging → This Firefox →
+Load Temporary Add-on`):
 
-First run opens a browser: log in once at lidl-hellas.gr, then rerun. Session persists in `data/.lidl-profile/` (git-ignored).
+1. Log into lidl-hellas.gr once in Firefox (normal browsing).
+2. Open the extension popup, set Server URL (`http://host:5090`), paste the
+   token from dashboard Settings → Extension, set the page cap (default 5).
+3. Sync = incremental catch-up. Check "Full history scan" for a first run
+   against an old account (sequential requests, 1.5–3 s throttle, 100-page
+   backstop, Cancel anytime; rerunning resumes automatically).
+4. Review imported receipts on the dashboard; nothing auto-pushes to Grocy.
+
+Remote/VPN servers: use HTTPS; a self-signed cert needs a one-time browser
+exception in Firefox. Manual fallback: dashboard paste form, or
+`python fetch_lidl.py --paste pasted.txt --tid 14000...`.
