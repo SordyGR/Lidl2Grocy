@@ -9,6 +9,9 @@
 <datalist id="grocy-names">
 {% for n in grocy_names %}<option value="{{ n }}">{% endfor %}
 </datalist>
+<datalist id="grocy-cats">
+{% for n in grocy_cats %}<option value="{{ n }}">{% endfor %}
+</datalist>
 <form method="get">
 <input id="q" name="q" value="{{ q }}" placeholder="search raw / clean / category / barcode">
 <select name="filter"><option value="all" {% if filt=="all" %}selected{% endif %}>all</option>
@@ -42,7 +45,7 @@
 {% for c in cats %}<option value="{{ c["category"] }}">{{ c["category"] }}</option>{% endfor %}
 <option value="__new__">+ New category…</option>
 </select>
-<input name="new_category" class="newcat" placeholder="new category name" style="display:none" size="14"></td>
+<input name="new_category" list="grocy-cats" class="newcat" placeholder="new category name" style="display:none" size="14"></td>
 <td><button>Add</button></td>
 </form></tr>{% endfor %}</table>
 {% endif %}
@@ -69,7 +72,7 @@
 {% for c in cats %}<option value="{{ c["category"] }}" {% if c["category"]==r["category"] %}selected{% endif %}>{{ c["category"] }}</option>{% endfor %}
 <option value="__new__">+ New category…</option>
 </select>
-<input name="new_category" class="newcat" placeholder="new category name" style="display:none" size="14"></td>
+<input name="new_category" list="grocy-cats" class="newcat" placeholder="new category name" style="display:none" size="14"></td>
 <td><input name="barcode" value="{{ r["barcode"] or "" }}" size="12"></td>
 <td><input name="brand" value="{{ r["brand"] or "" }}" size="8" placeholder="brand">
 <input name="unit" value="{{ r["unit"] or "" }}" size="6" placeholder="unit"></td>

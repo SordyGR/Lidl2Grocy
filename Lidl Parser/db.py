@@ -94,6 +94,13 @@ CREATE TABLE IF NOT EXISTS units (
     source TEXT DEFAULT 'local',
     cached_at TEXT DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    grocy_id INTEGER UNIQUE,
+    name TEXT UNIQUE NOT NULL,
+    source TEXT DEFAULT 'local',
+    cached_at TEXT DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT DEFAULT ''

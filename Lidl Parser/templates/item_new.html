@@ -26,7 +26,7 @@
 {% for u in quantity_units %}<option value="{{ u["id"] }}">{{ u["name"] }}</option>{% endfor %}</select></label>
 <label>Purchase→stock factor <input name="qu_factor" size="6" placeholder="1"></label>
 </fieldset>
-<fieldset><legend>Classification</legend>
+<fieldset><legend>Classification{% if groups_cached %} (cached){% endif %}</legend>
 <label>Product group <select name="product_group_id"><option value="">group…</option>
 {% for g in groups %}<option value="{{ g["id"] }}">{{ g["name"] }}</option>{% endfor %}</select></label>
 <label>Parent product id <input name="parent_product_id" size="6" placeholder="optional"></label>

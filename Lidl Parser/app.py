@@ -493,6 +493,7 @@ def products():
         "SELECT DISTINCT raw FROM items WHERE match_type='new' AND raw NOT IN (SELECT raw FROM products) LIMIT 100"
     ).fetchall()
     cats = conn.execute("SELECT DISTINCT category FROM products ORDER BY category").fetchall()
+    grocy_cats = [r[0] for r in conn.execute("SELECT name FROM categories ORDER BY name").fetchall()]
     linked_ids = [r[0] for r in conn.execute("SELECT grocy_id FROM products WHERE grocy_id IS NOT NULL").fetchall()]
     conn.close()
     grocy_error = None
@@ -535,6 +536,7 @@ def products():
             d["suggestions"] = []
         enriched.append(d)
     return render_template(_tpl("products.html"), rows=enriched, new_items=new_items, q=q, filt=f, cats=cats,
+                           grocy_cats=grocy_cats,
                            grocy_configured=grocy_configured, grocy_names=grocy_names,
                            grocy_error=grocy_error, orphans=sorted(orphans),
                            sort=sort, direction=direction, cat=cat, gf=gf, tf=tf, per=per,
@@ -1095,6 +1097,7 @@ def mapping_new_item():
     prod = dict(prod) if prod else {"raw": raw, "clean": raw, "brand": "",
                                    "barcode": "", "category": "Misc"}
     grocy_error, groups = None, []
+    groups_cached = False
     lookups = {"locations": [], "quantity_units": []}
     try:
         base_url, api_key = grocy_client.get_config()
@@ -1104,11 +1107,18 @@ def mapping_new_item():
             groups = grocy_client.fetch_product_groups(base_url, api_key)
         except Exception as e:
             grocy_error = f"Grocy lookups unavailable: {str(e)[:150]}"
+            conn = get_db()
+            groups = [{"id": r[0], "name": r[1]} for r in
+                      conn.execute("SELECT grocy_id, name FROM categories "
+                                   "WHERE grocy_id IS NOT NULL ORDER BY name").fetchall()]
+            conn.close()
+            groups_cached = bool(groups)
     except grocy_client.GrocyConfigError:
         grocy_configured = False
     return render_template(_tpl("item_new.html"), prod=prod,
                            grocy_configured=grocy_configured,
                            grocy_error=grocy_error,
+                           groups_cached=groups_cached,
                            locations=lookups["locations"],
                            quantity_units=lookups["quantity_units"],
                            groups=groups)
@@ -1339,8 +1349,10 @@ def settings():
         """SELECT c.last4 AS last4, c.user_id AS user_id, u.name AS user_name
            FROM card_map c JOIN users u ON u.id = c.user_id ORDER BY c.last4""").fetchall()]
     units = [dict(r) for r in conn.execute("SELECT id, grocy_id, name, source FROM units ORDER BY name").fetchall()]
+    categories = [dict(r) for r in conn.execute("SELECT id, grocy_id, name, source FROM categories ORDER BY name").fetchall()]
     conn.close()
-    return render_template(_tpl("settings.html"), v=vals, users=users, cards=cards, units=units)
+    return render_template(_tpl("settings.html"), v=vals, users=users, cards=cards, units=units,
+                           categories=categories)
 
 
 @app.route("/settings/units-refresh", methods=["POST"])
@@ -1372,6 +1384,38 @@ def settings_units_refresh():
     conn.commit()
     conn.close()
     flash(f"Units refreshed from Grocy: {n}")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/categories-refresh", methods=["POST"])
+def settings_categories_refresh():
+    try:
+        base_url, api_key = grocy_client.get_config()
+        groups = grocy_client.fetch_product_groups(base_url, api_key)
+    except Exception as e:
+        flash(f"Grocy categories unavailable, keeping cached list: {str(e)[:150]}")
+        return redirect(url_for("settings"))
+    conn = get_db()
+    n = 0
+    for g in groups:
+        try:
+            gid = int(g.get("id"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        name = str(g.get("name", "")).strip()
+        if not name:
+            continue
+        try:
+            conn.execute("""INSERT INTO categories (grocy_id, name, source, cached_at)
+                            VALUES (?, ?, 'grocy', datetime('now'))
+                            ON CONFLICT(grocy_id) DO UPDATE SET name=excluded.name, source='grocy',
+                            cached_at=datetime('now')""", (gid, name))
+            n += 1
+        except Exception:
+            continue
+    conn.commit()
+    conn.close()
+    flash(f"Categories refreshed from Grocy: {n}")
     return redirect(url_for("settings"))
 
 

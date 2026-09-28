@@ -27,6 +27,13 @@
 <table><tr><th>Name</th><th>Grocy id</th><th>Source</th></tr>
 {% for u in units %}<tr><td>{{ u['name'] }}</td><td>{{ u['grocy_id'] or '' }}</td><td>{{ u['source'] }}</td></tr>{% endfor %}
 </table>
+<h2>Categories</h2>
+<form method="post" action="{{ url_for('settings_categories_refresh') }}">
+<button class="btn btn-ghost">Refresh from Grocy</button>
+</form>
+<table><tr><th>Name</th><th>Grocy id</th><th>Source</th></tr>
+{% for c in categories %}<tr><td>{{ c['name'] }}</td><td>{{ c['grocy_id'] or '' }}</td><td>{{ c['source'] }}</td></tr>{% endfor %}
+</table>
 </div>
 <div class="card">
 <h2>Users</h2>
