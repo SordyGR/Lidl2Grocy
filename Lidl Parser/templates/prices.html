@@ -18,6 +18,7 @@
 </div>
 </div>
 <div id="chips"></div>
+<p id="rank-note"></p>
 </form>
 <canvas id="trend"></canvas>
 <canvas id="pareto"></canvas>
@@ -43,7 +44,14 @@ function topN(){
 async function loadRank(){
   const r = await fetch("/api/abc_analysis?metric="
     + encodeURIComponent(metricEl.value) + "&top=50");
-  rankRows = (await r.json()).rows;
+  const j = await r.json();
+  rankRows = j.rows;
+  const note = document.getElementById("rank-note");
+  if (note) {
+    const cl = j.classes || {A:0,B:0,C:0};
+    note.textContent = "Top " + rankRows.length + " of " + (j.count || rankRows.length)
+      + " · A " + cl.A + " / B " + cl.B + " / C " + cl.C;
+  }
 }
 function seedFromTop(){
   selected = rankRows.slice(0, topN()).map(r=>r.clean);

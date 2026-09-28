@@ -10,10 +10,18 @@
 <form method="post" action="{{ url_for('settings_ext_regenerate') }}"><button>Regenerate token</button></form>
 <p><a href="/backup-db">Download full DB backup</a></p>
 <form method="post">
+<input type="hidden" name="form" value="grocy">
 <h2>Grocy</h2>
 <label>URL <input type="text" name="GROCY_URL" value="{{ v['GROCY_URL'] }}"></label>
 <label>API key <input type="text" name="GROCY_API_KEY" value="{{ v['GROCY_API_KEY'] }}"></label>
 <p><a href="/api/grocy_status">Test Grocy connection</a></p>
+<button type="submit">Save</button>
+</form>
+<h2>Excluded from charts</h2>
+<form method="post">
+<input type="hidden" name="form" value="excluded">
+<p><small>Checked categories are left out of dashboard charts, KPIs spent, top products and ABC analysis. Counts, receipts and exports stay whole.</small></p>
+{% for c in all_cats %}<label><input type="checkbox" name="excluded" value="{{ c }}" {% if c in excluded %}checked{% endif %}> {{ c }}</label><br>{% endfor %}
 <button type="submit">Save</button>
 </form>
 <h2>Units</h2>

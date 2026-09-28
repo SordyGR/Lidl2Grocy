@@ -13,10 +13,20 @@
 </div>
 <div class="card">
 <form method="post">
+<input type="hidden" name="form" value="grocy">
 <h2>Grocy</h2>
 <div class="field"><label>URL</label><input type="text" name="GROCY_URL" value="{{ v['GROCY_URL'] }}"></div>
 <div class="field"><label>API key</label><input type="text" name="GROCY_API_KEY" value="{{ v['GROCY_API_KEY'] }}"></div>
 <p><a href="/api/grocy_status">Test Grocy connection</a></p>
+<button class="btn" type="submit">Save</button>
+</form>
+</div>
+<div class="card">
+<h2>Excluded from charts</h2>
+<form method="post">
+<input type="hidden" name="form" value="excluded">
+<p class="sub">Checked categories are left out of dashboard charts, KPIs spent, top products and ABC analysis. Counts, receipts and exports stay whole.</p>
+{% for c in all_cats %}<label><input type="checkbox" name="excluded" value="{{ c }}" {% if c in excluded %}checked{% endif %}> {{ c }}</label><br>{% endfor %}
 <button class="btn" type="submit">Save</button>
 </form>
 </div>

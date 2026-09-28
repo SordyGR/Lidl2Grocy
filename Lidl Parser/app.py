@@ -46,6 +46,26 @@ def _ext_authorized():
     return hmac.compare_digest(auth[len("Bearer "):], tok)
 
 
+def _excluded_categories():
+    """Categories excluded from charts (Settings); empty set = everything shown."""
+    import json
+    try:
+        vals = json.loads(app_settings.get("EXCLUDED_CATEGORIES") or "[]")
+    except (ValueError, TypeError):
+        return set()
+    if not isinstance(vals, list):
+        return set()
+    return {str(v).strip() for v in vals if str(v).strip()}
+
+
+def _excluded_sql(alias="COALESCE(category,'Misc')"):
+    excl = sorted(_excluded_categories())
+    if not excl:
+        return "", []
+    holders = ",".join("?" for _ in excl)
+    return f" AND {alias} NOT IN ({holders})", excl
+
+
 @app.route("/api/ext/status")
 def api_ext_status():
     if not _ext_authorized():
@@ -190,44 +210,47 @@ def query(sql, args=()):
 
 @app.route("/")
 def dashboard():
-    kpis = query("""
+    xclause, xargs = _excluded_sql("COALESCE(category,'Misc')")
+    kpis = query(f"""
         SELECT (SELECT COUNT(*) FROM receipts) AS receipts,
                (SELECT COUNT(*) FROM items) AS items,
-               (SELECT COALESCE(SUM(final),0) FROM items) AS spent,
+               (SELECT COALESCE(SUM(final),0) FROM items WHERE 1=1{xclause}) AS spent,
                (SELECT COUNT(*) FROM items WHERE match_type='new') AS unmapped,
                (SELECT COUNT(*) FROM products) AS products
-    """)[0]
-    monthly = query("""
+    """, xargs)[0]
+    ixclause, ixargs = _excluded_sql("COALESCE(i.category,'Misc')")
+    monthly = query(f"""
         SELECT substr(receipt_date,1,7) AS m, ROUND(SUM(i.final),2) AS total
         FROM items i JOIN receipts r ON r.id=i.receipt_id
-        WHERE r.receipt_date IS NOT NULL
+        WHERE r.receipt_date IS NOT NULL{ixclause}
         GROUP BY m ORDER BY m
-    """)
+    """, ixargs)
     pie, frm, to = _pie_bounds(request.args.get("pie", ""), request.args.get("from", ""), request.args.get("to", ""))
     if frm and to:
-        by_cat = query("""
+        by_cat = query(f"""
             SELECT COALESCE(category,'Misc') AS c, ROUND(SUM(final),2) AS total
             FROM items i JOIN receipts r ON r.id=i.receipt_id
-            WHERE r.receipt_date BETWEEN ? AND ?
+            WHERE r.receipt_date BETWEEN ? AND ?{ixclause}
             GROUP BY c ORDER BY total DESC LIMIT 12
-        """, (frm, to))
+        """, (frm, to, *ixargs))
     else:
-        by_cat = query("""
+        by_cat = query(f"""
             SELECT COALESCE(category,'Misc') AS c, ROUND(SUM(final),2) AS total
-            FROM items GROUP BY c ORDER BY total DESC LIMIT 12
-        """)
+            FROM items WHERE 1=1{xclause} GROUP BY c ORDER BY total DESC LIMIT 12
+        """, xargs)
     recent = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC LIMIT 10")
-    top = query("""
+    top = query(f"""
         SELECT clean, COUNT(*) AS n, ROUND(SUM(final),2) AS total
-        FROM items GROUP BY clean ORDER BY total DESC LIMIT 10
-    """)
-    user_totals = query("""
+        FROM items WHERE 1=1{xclause} GROUP BY clean ORDER BY total DESC LIMIT 10
+    """, xargs)
+    user_totals = query(f"""
         SELECT u.name AS n, ROUND(SUM(i.final * s.share), 2) AS total
         FROM item_splits s
         JOIN items i ON i.id = s.item_id
         JOIN users u ON u.id = s.user_id
+        WHERE 1=1{ixclause}
         GROUP BY u.name ORDER BY total DESC
-    """)
+    """, ixargs)
     return render_template(_tpl("dashboard.html"), k=kpis, monthly=monthly,
                            by_cat=by_cat, recent=recent, top=top,
                            user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "")
@@ -1546,32 +1569,41 @@ def api_abc_analysis():
     except ValueError:
         top = 5
     top = max(1, min(top, 50))
+    xclause, xargs = _excluded_sql("COALESCE(i.category,'Misc')")
     rows = query(f"""
         SELECT i.clean AS clean, {ABC_METRICS[metric]} AS v
         FROM items i JOIN receipts r ON r.id=i.receipt_id
-        WHERE r.receipt_date IS NOT NULL
+        WHERE r.receipt_date IS NOT NULL{xclause}
         GROUP BY i.clean ORDER BY v DESC
-    """)
+    """, xargs)
     total = sum(float(r["v"] or 0) for r in rows) or 1.0
-    cum, out = 0.0, []
+    cum, out, classes = 0.0, [], {"A": 0, "B": 0, "C": 0}
     for r in rows:
         cum += float(r["v"] or 0)
         pct = round(100 * cum / total, 1)
         cls = "A" if pct <= 80 else ("B" if pct <= 95 else "C")
+        classes[cls] += 1
         out.append({"clean": r["clean"], "value": r["v"],
                     "cum_pct": pct, "class": cls})
-    return jsonify({"metric": metric, "rows": out[:top]})
+    return jsonify({"metric": metric, "rows": out[:top], "total": round(total, 2),
+                    "count": len(rows), "classes": classes})
 
 
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     if request.method == "POST":
-        url = (request.form.get("GROCY_URL") or "").strip()
-        if url and not url.rstrip("/").endswith("/api"):
-            flash("Grocy URL must end with /api - value not saved")
+        which = request.form.get("form", "grocy")
+        if which == "excluded":
+            import json as _json
+            excl = sorted({e.strip() for e in request.form.getlist("excluded") if e.strip()})
+            app_settings.set("EXCLUDED_CATEGORIES", _json.dumps(excl))
         else:
-            app_settings.set("GROCY_URL", url)
-            app_settings.set("GROCY_API_KEY", (request.form.get("GROCY_API_KEY") or "").strip())
+            url = (request.form.get("GROCY_URL") or "").strip()
+            if url and not url.rstrip("/").endswith("/api"):
+                flash("Grocy URL must end with /api - value not saved")
+            else:
+                app_settings.set("GROCY_URL", url)
+                app_settings.set("GROCY_API_KEY", (request.form.get("GROCY_API_KEY") or "").strip())
         flash("Settings saved")
         return redirect(url_for("settings"))
     vals = {k: app_settings.get(k) for k in ("GROCY_URL", "GROCY_API_KEY")}
@@ -1583,9 +1615,11 @@ def settings():
            FROM card_map c JOIN users u ON u.id = c.user_id ORDER BY c.last4""").fetchall()]
     units = [dict(r) for r in conn.execute("SELECT id, grocy_id, name, source FROM units ORDER BY name").fetchall()]
     categories = [dict(r) for r in conn.execute("SELECT id, grocy_id, name, source FROM categories ORDER BY name").fetchall()]
+    all_cats = [r[0] for r in conn.execute("SELECT DISTINCT COALESCE(category,'Misc') FROM products ORDER BY 1").fetchall()]
     conn.close()
     return render_template(_tpl("settings.html"), v=vals, users=users, cards=cards, units=units,
-                           categories=categories)
+                           categories=categories, all_cats=all_cats,
+                           excluded=sorted(_excluded_categories()))
 
 
 @app.route("/settings/units-refresh", methods=["POST"])
