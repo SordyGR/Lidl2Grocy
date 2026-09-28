@@ -15,9 +15,10 @@ class _El:
 class _FakePage:
     """History pages from tids_by_page; detail bodies from bodies."""
 
-    def __init__(self, tids_by_page, bodies):
+    def __init__(self, tids_by_page, bodies, body_text=""):
         self._tids = tids_by_page
         self._bodies = bodies
+        self._body_text = body_text
         self.url = "https://www.lidl-hellas.gr/mre/purchase-history?page=1"
         self._cur = 1
         self.detail_calls = []
@@ -40,7 +41,7 @@ class _FakePage:
         return None
 
     def inner_text(self, sel):
-        return ""
+        return self._body_text
 
 
 class _FakeCtx:
@@ -114,6 +115,7 @@ def test_resume_skips_seen_and_advances_cursor(tmp_path, monkeypatch):
         assert st["last_page"] == 1
         assert st["new_count"] == 1
         assert st["skipped_count"] == 1
+        assert st["phase"] == "backfill"  # run fetched new receipts: stays backfill
     finally:
         conn.close()
 
@@ -162,3 +164,66 @@ def test_incremental_early_stop_avoids_detail_fetches(tmp_path, monkeypatch):
     rc = fl.cmd_sync(early_stop=2)
     assert rc == 0
     assert calls == []  # stopped after 2 consecutive seen, never fetched
+
+
+def test_overload_pauses_with_cursor_and_retries_tid(tmp_path, monkeypatch):
+    import fetch_lidl as fl
+    import playwright.sync_api as sp
+    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / "o.db"))
+    dbmod.init_db()
+
+    tids_by_page = {1: ["ok1", "slow1"]}
+    page = _FakePage(tids_by_page, {"ok1": "body-ok1"},
+                     body_text="system overload, try later")
+
+    class _PW:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        @property
+        def chromium(self):
+            class _C:
+                def launch_persistent_context(inner_self, *a, **k):
+                    return _FakeCtx(page)
+            return _C()
+
+    import contextlib
+
+    @contextlib.contextmanager
+    def _fake_pw():
+        yield _PW()
+
+    monkeypatch.setattr(sp, "sync_playwright", _fake_pw)
+    monkeypatch.setattr(fl, "launch_context", lambda p, headed=False: _FakeCtx(page))
+
+    def _detail(p, tid):
+        if tid == "slow1":
+            raise TimeoutError("detail timed out under overload")
+        return {"ok1": "body-ok1"}[tid]
+
+    monkeypatch.setattr(fl, "fetch_detail_text", _detail)
+    monkeypatch.setattr(fl, "trim_receipt_text", lambda t: t)
+    monkeypatch.setattr(fl, "receipt_body_date", lambda t: ("26", "01", "01"))
+    monkeypatch.setattr(fl, "pick_filename", lambda d, c, *a: "26-01-01.1.txt")
+    monkeypatch.setattr(
+        fl, "import_kept_receipt",
+        lambda conn, kept, name, tid: conn.execute(
+            "INSERT OR IGNORE INTO fetch_state (t_id, filename) VALUES (?, ?)",
+            (tid, name)))
+
+    rc = fl.cmd_sync(early_stop=10)
+    assert rc == 4
+    assert "Paused at page 1" in (fl.LAST_SYNC_ERROR or "")
+    conn = dbmod.get_db()
+    try:
+        seen = {r[0] for r in conn.execute("SELECT t_id FROM fetch_state").fetchall()}
+        assert "ok1" in seen
+        assert "slow1" not in seen  # failed tid is retried next run, not skipped
+        st = dbmod.get_sync_state(conn)
+        assert st["new_count"] == 1
+        assert st["last_page"] == 1
+    finally:
+        conn.close()

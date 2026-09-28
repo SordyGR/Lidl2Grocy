@@ -19,6 +19,11 @@ DETAIL_URL = ("https://www.lidl-hellas.gr/mre/purchase-detail"
 LOGIN_URL = "https://www.lidl-hellas.gr/user-api/login?step=login&redirect=/"
 PROFILE_DIR = os.path.join(BASE_DIR, "data", ".lidl-profile")
 
+# collect_tids stops after this many consecutive pages with no *new* tids.
+# Tolerates an isolated repeated page; stops stuck pagination (?page=
+# ignored by the site, same content forever) instead of looping forever.
+STALE_PAGE_LIMIT = 2
+
 
 def _profile_dir():
     """Profile location; LIDL_PROFILE_DIR wins (Docker: mount it from /app/data)."""
@@ -217,6 +222,7 @@ def collect_tids(page, max_pages: int = 0, with_pages: bool = False) -> list:
     seen: set = set()
     pages: dict = {}
     page_num = 1
+    stale_pages = 0
     while True:
         if max_pages and page_num > max_pages:
             break
@@ -227,9 +233,19 @@ def collect_tids(page, max_pages: int = 0, with_pages: bool = False) -> list:
             # races page load and silently finds zero receipts
             page.wait_for_selector("a[href*='purchase-detail']", timeout=15000)
         except Exception:
+            # A slow-JS timeout looks identical to end-of-history.
+            # Retry the page once before treating it as empty, so a
+            # transient load never truncates a backfill as success.
+            try:
+                page.goto(HISTORY_URL.format(page=page_num))
+                page.wait_for_selector("a[href*='purchase-detail']", timeout=15000)
+            except Exception:
+                break
+        links = page.query_selector_all("a[href*='purchase-detail']")
+        if not links:
             break
         found_new = False
-        for el in page.query_selector_all("a[href*='purchase-detail']"):
+        for el in links:
             href = el.get_attribute("href") or ""
             m = re.search(r"[?&]t=([\w-]+)", href)
             if m and m.group(1) not in seen:
@@ -237,8 +253,16 @@ def collect_tids(page, max_pages: int = 0, with_pages: bool = False) -> list:
                 tids.append(m.group(1))
                 pages[m.group(1)] = page_num
                 found_new = True
-        if not found_new:
-            break
+        # A page of only already-seen tids does NOT end the walk (an
+        # isolated repeated page still precedes new history), but stuck
+        # pagination (?page= ignored, same content forever) must end it:
+        # stop after STALE_PAGE_LIMIT consecutive pages with nothing new.
+        if found_new:
+            stale_pages = 0
+        else:
+            stale_pages += 1
+            if stale_pages >= STALE_PAGE_LIMIT:
+                break
         if max_pages and page_num >= max_pages:
             break
         # Walk ?page=N until a page yields zero links. The history
@@ -310,7 +334,7 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
                     if tid in seen_db:
                         skipped += 1
                         consecutive_seen += 1
-                        set_sync_state(conn, phase="incremental", last_page=tid_page,
+                        set_sync_state(conn, last_page=tid_page,
                                        last_tid=tid, new_count=new, skipped_count=skipped)
                         if consecutive_seen >= early_stop and early_stop > 0:
                             break
@@ -326,10 +350,15 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
                         with open(os.path.join(RECEIPT_DIR, name), "w",
                                   encoding="utf-8") as f:
                             f.write(kept)
+                        # Ordering, not atomicity: import_kept_receipt commits
+                        # internally, so the receipt lands before the cursor.
+                        # A kill between the two replays safely (fetch_state
+                        # dedups, import is INSERT OR IGNORE idempotent) —
+                        # the cursor always lags, never skips.
                         conn.commit()
                         new += 1
                         seen_db.add(tid)
-                        set_sync_state(conn, phase="backfill", last_page=tid_page,
+                        set_sync_state(conn, last_page=tid_page,
                                        last_tid=tid, new_count=new, skipped_count=skipped)
                         if latest_only:
                             break
@@ -343,6 +372,10 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
                             break
                         needs.append(tid)
                         print(f"Receipt {tid} needs review: {type(e).__name__}: {e}")
+                # Latch the run phase once, from the run outcome — never
+                # per-tid, so a backfill tail of already-seen receipts
+                # cannot flip the progress display to incremental.
+                set_sync_state(conn, phase="backfill" if new > 0 else "incremental")
                 if paused_page is not None:
                     LAST_SYNC_ERROR = (
                         f"Paused at page {paused_page} after {new} new receipt(s) "
