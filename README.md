@@ -159,7 +159,8 @@ Pick a metric (spend / quantity / frequency) and top-N: the page seeds the
 comparison from the ABC ranking, and the searchable dropdown adds more
 products (menu stays open, click toggles). Overlaid price-trend chart on top,
 Pareto bars + cumulative-% line below, stat table at the bottom. Classes:
-A ≤ 80% cumulative, B ≤ 95%, C rest.
+A ≤ 80% cumulative, B ≤ 95%, C rest. The **Download analysis.xlsx** link on
+the page exports the full lines + price trends workbook.
 
 ### Settings reference
 Extension token (show/copy/regenerate — paste it into the Firefox extension),

@@ -366,6 +366,48 @@ def export_csv():
                     headers={"Content-Disposition": f"attachment; filename=export_{frm}_{to}.csv"})
 
 
+@app.route("/export-analysis.xlsx")
+def export_analysis():
+    rows = query("""
+        SELECT r.filename AS receipt, r.receipt_date AS date, i.raw AS product,
+               i.clean AS clean, i.category AS category, i.qty AS qty,
+               i.unit_price AS unit_price, i.vat AS vat, i.discount AS discount,
+               i.final AS final, i.match_type AS match_type,
+               i.match_score AS match_score, p.barcode AS barcode,
+               r.store AS store, r.card_last4 AS card
+        FROM items i JOIN receipts r ON r.id = i.receipt_id
+        LEFT JOIN products p ON p.raw = i.raw
+        ORDER BY r.receipt_date, r.filename, i.id
+    """)
+    cols = ["Receipt", "Date", "Product", "Clean", "Category", "Qty",
+            "Unit Price", "VAT", "Discount", "Final", "Match Type",
+            "Match Score", "Barcode", "Store", "Card"]
+    all_data = pd.DataFrame([dict(r) for r in rows],
+                            columns=["receipt", "date", "product", "clean",
+                                     "category", "qty", "unit_price", "vat",
+                                     "discount", "final", "match_type",
+                                     "match_score", "barcode", "store", "card"])
+    all_data.columns = cols
+    # Barcodes / card tails must stay text in Excel (leading zeros matter).
+    for text_col in ("Barcode", "Card"):
+        all_data[text_col] = all_data[text_col].astype("string")
+    if len(all_data):
+        trends = (all_data.groupby(["Clean", "Date"])["Unit Price"]
+                          .agg(["mean", "min", "max"]).reset_index()
+                          .rename(columns={"Clean": "Clean Product"}))
+    else:
+        trends = pd.DataFrame(columns=["Clean Product", "Date", "mean", "min", "max"])
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf) as writer:
+        all_data.to_excel(writer, sheet_name="All Data", index=False)
+        trends.to_excel(writer, sheet_name="Price Trends", index=False)
+    buf.seek(0)
+    stamp = date.today().strftime("%Y-%m-%d")
+    return Response(buf.getvalue(),
+                    mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename=analysis_{stamp}.xlsx"})
+
+
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
     if request.method == "POST":
