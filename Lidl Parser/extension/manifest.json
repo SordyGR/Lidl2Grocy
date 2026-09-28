@@ -1,0 +1,13 @@
+{
+  "manifest_version": 2,
+  "name": "Lidl2Grocy Sync",
+  "version": "1.0",
+  "description": "Sync Lidl Hellas digital receipts to the Lidl2Grocy server.",
+  "permissions": ["storage", "tabs", "*://*.lidl-hellas.gr/*", "http://*/*", "https://*/*"],
+  "browser_action": {"default_popup": "popup.html", "default_title": "Lidl2Grocy Sync"},
+  "background": {"scripts": ["background.js"], "persistent": false},
+  "content_scripts": [
+    {"matches": ["*://*.lidl-hellas.gr/mre/purchase-history*"], "js": ["content_history.js"], "run_at": "document_idle"},
+    {"matches": ["*://*.lidl-hellas.gr/mre/purchase-detail*"], "js": ["content_detail.js"], "run_at": "document_idle"}
+  ]
+}
