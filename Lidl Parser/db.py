@@ -112,6 +112,10 @@ CREATE TABLE IF NOT EXISTS item_splits (
     share REAL NOT NULL CHECK (share > 0 AND share <= 1),
     PRIMARY KEY (item_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS sync_state (
+    key TEXT PRIMARY KEY,
+    value TEXT DEFAULT ''
+);
 """
 
 
@@ -122,6 +126,35 @@ def get_db():
     conn.execute("PRAGMA foreign_keys = ON")
     conn.create_function("grnorm", 1, grnorm)
     return conn
+
+
+_SYNC_DEFAULTS = {"phase": "", "last_page": "0", "last_tid": "",
+                  "new_count": "0", "skipped_count": "0", "updated_at": ""}
+
+
+def get_sync_state(conn):
+    """Read the backfill cursor. Missing keys yield zero-values."""
+    rows = {r["key"]: r["value"] for r in
+            conn.execute("SELECT key, value FROM sync_state").fetchall()}
+    out = {"phase": rows.get("phase", ""), "last_tid": rows.get("last_tid", ""),
+           "updated_at": rows.get("updated_at", "")}
+    for k in ("last_page", "new_count", "skipped_count"):
+        try:
+            out[k] = int(rows.get(k, "0") or "0")
+        except ValueError:
+            out[k] = 0
+    return out
+
+
+def set_sync_state(conn, **kw):
+    """Persist cursor keys; stamps updated_at. Commits."""
+    from datetime import datetime
+    kw = dict(kw)
+    kw.setdefault("updated_at", datetime.now().isoformat(timespec="seconds"))
+    for k, v in kw.items():
+        conn.execute("INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)",
+                     (k, str(v)))
+    conn.commit()
 
 
 def init_db():
