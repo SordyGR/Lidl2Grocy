@@ -212,9 +212,10 @@ def wait_for_login(page, timeout_s: int = 300) -> bool:
         time.sleep(2)
 
 
-def collect_tids(page, max_pages: int = 0) -> list:
+def collect_tids(page, max_pages: int = 0, with_pages: bool = False) -> list:
     tids: list = []
     seen: set = set()
+    pages: dict = {}
     page_num = 1
     while True:
         if max_pages and page_num > max_pages:
@@ -234,18 +235,18 @@ def collect_tids(page, max_pages: int = 0) -> list:
             if m and m.group(1) not in seen:
                 seen.add(m.group(1))
                 tids.append(m.group(1))
+                pages[m.group(1)] = page_num
                 found_new = True
         if not found_new:
             break
         if max_pages and page_num >= max_pages:
             break
-        if not max_pages:
-            # No explicit page cap: stop when a page yields no *new* ids
-            # beyond what we already saw, unless a next-page link exists.
-            nxt = page.query_selector("a[href*='page=']")
-            if nxt is None:
-                break
+        # Walk ?page=N until a page yields zero links. The history
+        # page renders no next-page link, so an empty page is the
+        # only reliable end-of-history signal.
         page_num += 1
+    if with_pages:
+        return [(t, pages[t]) for t in tids]
     return tids
 
 
