@@ -85,13 +85,17 @@ A full scan is the heaviest thing the extension ever does to Lidl, so:
 - **Throttle** — random 1.5–3 s pause between page/detail requests during a
   full scan (incremental syncs of ≤cap pages need no delay).
 - **Abort on first refusal** — login redirect, overload/block page, or HTTP
-  429/403 mid-sweep stops immediately; already-collected tids are still
-  submitted via `/need` + `/receipt` before exiting.
+  429/403 mid-sweep stops immediately. Per-receipt imports already POSTed
+  stand; tids collected but not yet fetched are dropped from memory and
+  re-collected by the next Sync (history pages are cheap; the expensive
+  detail fetches already done are never repeated thanks to the `/need`
+  diff).
 - **Resume is free** — anything not marked in `fetch_state` is returned as
   new by the next `/need`, so rerunning Sync after a cooldown resumes where
   the sweep stopped. No separate resume state.
 - **Progress + cancel** — popup shows `page N • tids so far • new so far`
-  with a Cancel button; cancel submits what was collected, then stops.
+  with a Cancel button; cancel stops after the in-flight request. Fetched
+  imports stand; the rest resumes on the next Sync.
 - **Backstop ceiling** — 100 pages hard cap even in full-scan (practically
   unreachable; guards against a pager-loop bug, reported as
   "stopped at backstop — rerun to continue").

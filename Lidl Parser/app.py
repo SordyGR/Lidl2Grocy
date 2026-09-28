@@ -39,7 +39,11 @@ def _ext_authorized():
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         return False
-    return hmac.compare_digest(auth[len("Bearer "):], _ext_token())
+    # Read-only: a wrong token must not mint and persist a fresh one.
+    tok = app_settings.get("EXT_INGEST_TOKEN")
+    if not tok:
+        return False
+    return hmac.compare_digest(auth[len("Bearer "):], tok)
 
 
 @app.route("/api/ext/status")

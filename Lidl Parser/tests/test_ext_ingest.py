@@ -90,6 +90,18 @@ def test_receipt_end_to_end_with_fixture(tmp_path, monkeypatch):
     assert s["ok"] is True and s["receipts"] == 1 and s["last_sync"] is not None
 
 
+def test_unauthenticated_request_does_not_create_token(tmp_path, monkeypatch):
+    import app as appmod
+    c = _client(tmp_path, monkeypatch)
+    # wrong token on a fresh DB: must 401 WITHOUT generating+storing a token
+    r = c.get("/api/ext/status", headers={"Authorization": "Bearer wrong"})
+    assert r.status_code == 401
+    conn = dbmod.get_db()
+    row = conn.execute("SELECT value FROM settings WHERE key='EXT_INGEST_TOKEN'").fetchone()
+    conn.close()
+    assert row is None
+
+
 def test_paste_route(tmp_path, monkeypatch):
     import os
     _client(tmp_path, monkeypatch)
