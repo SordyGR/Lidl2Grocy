@@ -16,10 +16,14 @@ sys.path.insert(0, BASE_DIR)
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session, Response
 from db import init_db, get_db
+from fetch_lib import (trim_receipt_text, receipt_body_date,
+                       pick_filename, import_kept_receipt)
 from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory, extract_card_last4
 import grocy as grocy_client
 import settings_store as app_settings
 import fetch_lidl
+
+RECEIPT_DIR = os.path.join(BASE_DIR, "receipts")
 
 app = Flask(__name__)
 app.secret_key = "lidl-local-dev"
@@ -51,7 +55,67 @@ def _ext_authorized():
 def api_ext_status():
     if not _ext_authorized():
         return jsonify({"error": "bad or missing token"}), 401
-    return jsonify({"ok": True, "last_sync": None, "receipts": 0})
+    conn = get_db()
+    try:
+        last = conn.execute("SELECT MAX(fetched_at) AS at FROM fetch_state").fetchone()["at"]
+        n = conn.execute("SELECT COUNT(*) AS c FROM receipts").fetchone()["c"]
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "last_sync": last, "receipts": n})
+
+
+@app.after_request
+def _ext_cors(resp):
+    if request.path.startswith("/api/ext/"):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
+@app.route("/api/ext/need", methods=["POST"])
+def api_ext_need():
+    if not _ext_authorized():
+        return jsonify({"error": "bad or missing token"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    tids = data.get("tids")
+    if (not isinstance(tids, list) or len(tids) > 5000
+            or not all(isinstance(t, str) for t in tids)):
+        return jsonify({"error": "tids must be a list of at most 5000 strings"}), 400
+    ordered = list(dict.fromkeys(tids))
+    conn = get_db()
+    try:
+        have = {r[0] for r in conn.execute("SELECT t_id FROM fetch_state").fetchall()}
+    finally:
+        conn.close()
+    return jsonify({"new": [t for t in ordered if t not in have]})
+
+
+@app.route("/api/ext/receipt", methods=["POST"])
+def api_ext_receipt():
+    if not _ext_authorized():
+        return jsonify({"error": "bad or missing token"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    tid = data.get("tid")
+    text = data.get("text", "")
+    if not tid or not isinstance(tid, str) or not isinstance(text, str) or not text.strip():
+        return jsonify({"error": "tid and non-empty text required"}), 400
+    conn = get_db()
+    try:
+        if conn.execute("SELECT 1 FROM fetch_state WHERE t_id=?", (tid,)).fetchone():
+            return jsonify({"status": "duplicate", "tid": tid})
+        try:
+            kept = trim_receipt_text(text)
+            yy, mm, dd = receipt_body_date(kept)
+            name = pick_filename(RECEIPT_DIR, conn, yy, mm, dd)
+            res = import_kept_receipt(conn, kept, name, tid)
+        except Exception as e:
+            return jsonify({"status": "error", "tid": tid, "error": str(e)[:200]}), 422
+        os.makedirs(RECEIPT_DIR, exist_ok=True)
+        with open(os.path.join(RECEIPT_DIR, name), "w", encoding="utf-8") as f:
+            f.write(kept)
+        return jsonify({"status": "imported", "tid": tid,
+                        "items": res["items"], "total": res["total"]})
+    finally:
+        conn.close()
 
 
 def _run_sync():

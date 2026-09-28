@@ -51,7 +51,7 @@ parsing, review UI, Products hub, Grocy push. Server-side scraping is deleted.
   - `POST /api/ext/receipt` `{tid, text} → {imported|duplicate|error}` —
     runs the existing `trim_receipt_text → import_kept_receipt` path, so
     filenames/dates/dedupe are unchanged; records `fetch_state` on success.
-  - `GET /api/ext/status` `{last_sync, receipts, needs_review}` (health).
+  - `GET /api/ext/status` `{ok,last_sync,receipts}` (failure display lives in the extension popup; failed tids are never recorded so the next `need` retries them)
   - Auth: `Authorization: Bearer <token>`, constant-time compare, 401 on
     mismatch, token never logged. `Access-Control-Allow-Origin: *` on
     `/api/ext/*` only.
@@ -111,7 +111,7 @@ A full scan is the heaviest thing the extension ever does to Lidl, so:
 - 401 → "Token rejected — copy it from Settings → Extension".
 - Partial failures → per-tid results; failed tids stay out of `fetch_state`
   so next Sync retries (same semantics as old rc=4). `status` exposes
-  `needs_review`.
+  `last_sync` + receipt count; per-tid failures are shown by the extension.
 - Zero tids extracted → "Lidl page changed — paste fallback still works".
 
 ## 7. Testing & rollout
