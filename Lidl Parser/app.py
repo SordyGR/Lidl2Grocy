@@ -1,5 +1,7 @@
 """Flask browser frontend for Lidl Parser (SQLite). Run: python app.py -> http://127.0.0.1:5000"""
+import hmac
 import os
+import secrets
 import sys
 import csv
 import io
@@ -28,6 +30,28 @@ _LOGIN = {"running": False}
 _LOGIN_LOCK = threading.Lock()
 _LOGIN_COOLDOWN_UNTIL = 0.0
 LOGIN_COOLDOWN_S = 30 * 60
+
+
+def _ext_token():
+    tok = app_settings.get("EXT_INGEST_TOKEN")
+    if not tok:
+        tok = secrets.token_urlsafe(32)
+        app_settings.set("EXT_INGEST_TOKEN", tok)
+    return tok
+
+
+def _ext_authorized():
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    return hmac.compare_digest(auth[len("Bearer "):], _ext_token())
+
+
+@app.route("/api/ext/status")
+def api_ext_status():
+    if not _ext_authorized():
+        return jsonify({"error": "bad or missing token"}), 401
+    return jsonify({"ok": True, "last_sync": None, "receipts": 0})
 
 
 def _run_sync():

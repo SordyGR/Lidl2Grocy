@@ -2,7 +2,7 @@
 import os
 import db as dbmod
 
-KNOWN_KEYS = {"LIDL_USER", "LIDL_PASS", "GROCY_URL", "GROCY_API_KEY"}
+KNOWN_KEYS = {"LIDL_USER", "LIDL_PASS", "GROCY_URL", "GROCY_API_KEY", "EXT_INGEST_TOKEN"}
 
 
 def get(key, default=""):
