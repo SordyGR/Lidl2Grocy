@@ -45,6 +45,11 @@ through the same app URL under `/browser/`, so remote users can sign in without
 opening a second host port or setting up an SSH tunnel. The container starts a
 virtual desktop and window manager for headed Chromium.
 
+First Sync backfills every history page; progress shows in the dashboard status.
+Interrupted runs resume from the saved cursor on the next Sync. Later syncs
+fetch only new receipts and stop after 10 consecutive already-seen ones.
+Use `--max N` to cap pages for testing.
+
 The viewer needs no VNC password. The desktop is LAN-only by design; do not
 expose port 5090 to the internet without additional authentication.
 
