@@ -87,9 +87,17 @@ def fetch_run():
 def api_fetch_status():
     conn = get_db()
     last = conn.execute("SELECT MAX(fetched_at) AS at FROM fetch_state").fetchone()["at"]
-    conn.close()
-    return jsonify({"running": _FETCH["running"], "result": _FETCH["result"],
-                    "error": _FETCH["error"], "last_sync": last})
+    try:
+        import db as dbmod
+        st = dbmod.get_sync_state(conn)
+    finally:
+        conn.close()
+    out = {"running": _FETCH["running"], "result": _FETCH["result"],
+           "error": _FETCH["error"], "last_sync": last}
+    out.update({"phase": st.get("phase", ""), "last_page": st.get("last_page", 0),
+                "new_count": st.get("new_count", 0),
+                "skipped_count": st.get("skipped_count", 0)})
+    return jsonify(out)
 
 
 @app.route("/fetch/login", methods=["GET", "POST"])

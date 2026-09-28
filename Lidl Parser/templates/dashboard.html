@@ -86,7 +86,9 @@ new Chart(document.getElementById('cats'), {type:'doughnut',
     const s = await r.json();
     if (s.last_sync) lastSync.textContent = 'Last sync: ' + s.last_sync;
     if (s.running) {
-      status.textContent = 'Syncing…';
+      status.textContent = (s.phase === 'backfill' && s.last_page)
+        ? 'Backfilling… page ' + s.last_page + ', ' + s.new_count + ' new / ' + s.skipped_count + ' skipped'
+        : 'Syncing…';
       return;
     }
     if (timer) { clearInterval(timer); timer = null; }
