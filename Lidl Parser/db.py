@@ -101,6 +101,24 @@ CREATE TABLE IF NOT EXISTS categories (
     source TEXT DEFAULT 'local',
     cached_at TEXT DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS import_staging (
+    raw TEXT PRIMARY KEY,
+    clean TEXT DEFAULT '',
+    category TEXT DEFAULT 'Misc',
+    barcode TEXT DEFAULT '',
+    brand TEXT DEFAULT '',
+    unit TEXT DEFAULT '',
+    weight TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    grocy_track INTEGER DEFAULT 1,
+    source_file TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS import_warnings (
+    barcode TEXT NOT NULL,
+    local_raw TEXT NOT NULL,
+    incoming_raw TEXT NOT NULL,
+    source_file TEXT DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT DEFAULT ''

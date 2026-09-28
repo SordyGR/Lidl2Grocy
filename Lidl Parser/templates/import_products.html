@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Import products</h1>
+<p>Upload a products file (<code>.xlsx</code> from Export, or <code>.csv</code> with a <code>raw</code> column).
+New products are added automatically; differing rows go to a conflict review page.</p>
+<form method="post" enctype="multipart/form-data">
+<input type="file" name="file" accept=".xlsx,.csv">
+<button type="submit">Upload</button>
+</form>
+{% endblock %}

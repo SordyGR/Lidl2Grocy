@@ -9,6 +9,7 @@
 <button class="btn btn-ghost" type="button" onclick="navigator.clipboard.writeText(document.getElementById('ext-token').value)">Copy</button>
 </form>
 <form method="post" action="{{ url_for('settings_ext_regenerate') }}"><button class="btn btn-ghost">Regenerate token</button></form>
+<p><a href="/backup-db">Download full DB backup</a></p>
 </div>
 <div class="card">
 <form method="post">

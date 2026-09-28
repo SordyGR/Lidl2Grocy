@@ -408,6 +408,197 @@ def export_analysis():
                     headers={"Content-Disposition": f"attachment; filename=analysis_{stamp}.xlsx"})
 
 
+@app.route("/export-products.xlsx")
+def export_products():
+    rows = query("""
+        SELECT raw, clean, category, barcode, brand, unit, weight, notes,
+               grocy_track
+        FROM products ORDER BY raw
+    """)
+    cols = ["raw", "clean", "category", "barcode", "brand", "unit",
+            "weight", "notes", "grocy_track"]
+    df = pd.DataFrame([dict(r) for r in rows], columns=cols)
+    df["barcode"] = df["barcode"].astype("string")
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf) as writer:
+        df.to_excel(writer, sheet_name="Products", index=False)
+    buf.seek(0)
+    stamp = date.today().strftime("%Y-%m-%d")
+    return Response(buf.getvalue(),
+                    mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename=products_{stamp}.xlsx"})
+
+
+_SHARE_COLS = ["raw", "clean", "category", "barcode", "brand", "unit",
+               "weight", "notes", "grocy_track"]
+
+
+def _share_norm(v):
+    if v is None:
+        return ""
+    s = str(v).strip()
+    return "" if s.lower() == "nan" else s
+
+
+def _share_track(v):
+    return 0 if _share_norm(v).lower() in ("0", "false", "no") else 1
+
+
+@app.route("/import-products", methods=["GET", "POST"])
+def import_products():
+    if request.method == "GET":
+        return render_template(_tpl("import_products.html"))
+    f = request.files.get("file")
+    if not f or not f.filename:
+        flash("No file selected")
+        return redirect(url_for("import_products"))
+    name = f.filename
+    try:
+        if name.lower().endswith(".csv"):
+            df = pd.read_csv(f, dtype=str, keep_default_na=False)
+        else:
+            df = pd.read_excel(f, dtype=str)
+    except Exception as e:
+        flash(f"Could not read {name}: {str(e)[:150]}")
+        return redirect(url_for("import_products"))
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    if "raw" not in df.columns:
+        flash("File needs a 'raw' column")
+        return redirect(url_for("import_products"))
+    conn = get_db()
+    conn.execute("DELETE FROM import_staging")
+    conn.execute("DELETE FROM import_warnings")
+    staged = 0
+    for _, row in df.iterrows():
+        raw = _share_norm(row.get("raw"))
+        if not raw:
+            continue
+        conn.execute("""INSERT OR REPLACE INTO import_staging
+                        (raw, clean, category, barcode, brand, unit, weight,
+                         notes, grocy_track, source_file)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                     (raw, _share_norm(row.get("clean")),
+                      _share_norm(row.get("category")) or "Misc",
+                      _share_norm(row.get("barcode")), _share_norm(row.get("brand")),
+                      _share_norm(row.get("unit")), _share_norm(row.get("weight")),
+                      _share_norm(row.get("notes")), _share_track(row.get("grocy_track")),
+                      name))
+        staged += 1
+    added = 0
+    for s in conn.execute("SELECT * FROM import_staging").fetchall():
+        d = dict(s)
+        bc = (d["barcode"] or "").strip()
+        if bc:
+            for o in conn.execute("SELECT raw FROM products WHERE barcode=? AND raw<>?",
+                                  (bc, d["raw"])).fetchall():
+                conn.execute("""INSERT INTO import_warnings (barcode, local_raw, incoming_raw, source_file)
+                                VALUES (?,?,?,?)""", (bc, o[0], d["raw"], name))
+        if conn.execute("SELECT 1 FROM products WHERE raw=?", (d["raw"],)).fetchone():
+            continue
+        conn.execute("""INSERT INTO products
+                        (raw, clean, category, barcode, brand, unit, weight,
+                         notes, grocy_track, needs_review)
+                        VALUES (?,?,?,?,?,?,?,?,?,0)""",
+                     (d["raw"], d["clean"], d["category"], d["barcode"],
+                      d["brand"], d["unit"], d["weight"], d["notes"],
+                      d["grocy_track"]))
+        conn.execute("DELETE FROM import_staging WHERE raw=?", (d["raw"],))
+        added += 1
+    conn.commit()
+    conn.close()
+    flash(f"Imported {staged} rows from {name}: {added} new products added")
+    return redirect(url_for("import_products_review"))
+
+
+@app.route("/import-products/review")
+def import_products_review():
+    conn = get_db()
+    staged = [dict(r) for r in conn.execute("SELECT * FROM import_staging ORDER BY raw").fetchall()]
+    warnings = [dict(r) for r in
+                conn.execute("SELECT barcode, local_raw, incoming_raw FROM import_warnings ORDER BY barcode").fetchall()]
+    conflicts = []
+    for s in staged:
+        local = conn.execute("SELECT clean, category, barcode, brand, unit, weight, notes, grocy_track"
+                             " FROM products WHERE raw=?", (s["raw"],)).fetchone()
+        if not local:
+            continue
+        local = {k: ("" if local[k] is None else str(local[k])) for k in _SHARE_COLS[1:]}
+        incoming = {c: ("" if s[c] is None else str(s[c])) for c in _SHARE_COLS[1:]}
+        diffs = {c: (local[c], incoming[c]) for c in _SHARE_COLS[1:]
+                 if local[c] != incoming[c]}
+        if diffs:
+            conflicts.append({"raw": s["raw"], "local": local,
+                              "incoming": incoming, "diffs": diffs})
+        bc = (s["barcode"] or "").strip()
+        if bc:
+            for o in conn.execute("SELECT raw FROM products WHERE barcode=? AND raw<>?",
+                                  (bc, s["raw"])).fetchall():
+                if not any(w["local_raw"] == o[0] and w["incoming_raw"] == s["raw"] for w in warnings):
+                    warnings.append({"barcode": bc, "local_raw": o[0], "incoming_raw": s["raw"]})
+    conn.close()
+    return render_template(_tpl("import_review.html"), conflicts=conflicts,
+                           warnings=warnings)
+
+
+@app.route("/import-products/resolve", methods=["POST"])
+def import_products_resolve():
+    default = request.form.get("default", "local")
+    conn = get_db()
+    staged = [dict(r) for r in conn.execute("SELECT * FROM import_staging").fetchall()]
+    counts = {"local": 0, "new": 0, "both": 0}
+    for s in staged:
+        choice = request.form.get(f"choice:{s['raw']}", default)
+        if choice not in ("local", "new", "both"):
+            choice = "local"
+        if choice == "local":
+            counts["local"] += 1
+        elif choice == "new":
+            conn.execute("""UPDATE products SET clean=?, category=?, barcode=?, brand=?,
+                            unit=?, weight=?, notes=?, grocy_track=?, updated_at=datetime('now')
+                            WHERE raw=?""",
+                         (s["clean"], s["category"], s["barcode"], s["brand"],
+                          s["unit"], s["weight"], s["notes"], s["grocy_track"], s["raw"]))
+            counts["new"] += 1
+        else:
+            new_raw = f"{s['raw']} [from {s['source_file']}]"
+            if not conn.execute("SELECT 1 FROM products WHERE raw=?", (new_raw,)).fetchone():
+                conn.execute("""INSERT INTO products
+                                (raw, clean, category, barcode, brand, unit, weight,
+                                 notes, grocy_track, needs_review)
+                                VALUES (?,?,?,?,?,?,?,?,?,0)""",
+                             (new_raw, s["clean"], s["category"], s["barcode"],
+                              s["brand"], s["unit"], s["weight"], s["notes"],
+                              s["grocy_track"]))
+            counts["both"] += 1
+    conn.execute("DELETE FROM import_staging")
+    conn.execute("DELETE FROM import_warnings")
+    conn.commit()
+    conn.close()
+    flash(f"Merge done: {counts['new']} kept-new, {counts['local']} kept-local, {counts['both']} kept-both")
+    return redirect(url_for("products"))
+
+
+@app.route("/backup-db")
+def backup_db():
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        conn = get_db()
+        conn.execute(f"VACUUM INTO '{path.replace(chr(39), chr(39) * 2)}'")
+        conn.close()
+        with open(path, "rb") as f:
+            data = f.read()
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    stamp = date.today().strftime("%Y-%m-%d")
+    return Response(data, mimetype="application/x-sqlite3",
+                    headers={"Content-Disposition": f"attachment; filename=lidl-backup-{stamp}.db"})
+
+
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
     if request.method == "POST":

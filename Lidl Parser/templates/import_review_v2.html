@@ -1,0 +1,38 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<h1>Import review</h1>
+{% if not conflicts %}
+<p class="sub">0 conflicts — everything matched or was auto-added.</p>
+{% else %}
+<div class="card">
+<form method="post" action="{{ url_for('import_products_resolve') }}">
+<p>Default for rows without an explicit choice:
+<select name="default">
+<option value="local">keep local</option>
+<option value="new">keep new</option>
+<option value="both">keep both</option>
+</select></p>
+{% for c in conflicts %}
+<h3>{{ c["raw"] }}</h3>
+<table><tr><th>Field</th><th>Local</th><th>Incoming</th></tr>
+{% for f, vals in c["diffs"].items() %}<tr><td>{{ f }}</td><td>{{ vals[0] }}</td><td>{{ vals[1] }}</td></tr>{% endfor %}
+</table>
+<p>
+<label><input type="radio" name="choice:{{ c["raw"] }}" value="local" checked> keep-local</label>
+<label><input type="radio" name="choice:{{ c["raw"] }}" value="new"> keep-new</label>
+<label><input type="radio" name="choice:{{ c["raw"] }}" value="both"> keep-both</label>
+</p>
+{% endfor %}
+<button class="btn" type="submit">Merge</button>
+</form>
+</div>
+{% endif %}
+{% if warnings %}
+<div class="card">
+<h2>Barcode warnings (display only — both rows are kept)</h2>
+<ul>
+{% for w in warnings %}<li>barcode {{ w["barcode"] }}: local {{ w["local_raw"] }} vs incoming {{ w["incoming_raw"] }}</li>{% endfor %}
+</ul>
+</div>
+{% endif %}
+{% endblock %}
