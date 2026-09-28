@@ -6,7 +6,7 @@ import sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
-from db import init_db, get_db
+from db import init_db, get_db, get_sync_state, set_sync_state
 from fetch_lib import (trim_receipt_text, receipt_body_date,
                        pick_filename, import_kept_receipt)
 
@@ -256,7 +256,8 @@ def fetch_detail_text(page, tid: str) -> str:
     return page.inner_text("body")
 
 
-def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False) -> int:
+def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False,
+           early_stop: int = 10) -> int:
     global LAST_LOGIN_NOTE, LAST_SYNC_ERROR
     LAST_LOGIN_NOTE = None
     LAST_SYNC_ERROR = None
@@ -293,8 +294,8 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
                         LAST_SYNC_ERROR = "Lidl still redirects to login after the interactive sign-in"
                         print(f"LOGIN NEEDED \u2014 {LAST_SYNC_ERROR}; rerun with --headed")
                         return 3
-            tids = collect_tids(page, max_pages)
-            if not tids:
+            pairs = collect_tids(page, max_pages, with_pages=True)
+            if not pairs:
                 # An empty history (fresh account, or nothing listed)
                 # is not an error — there is simply nothing to fetch.
                 print("no purchase-detail links on the history page; nothing to fetch")
@@ -303,10 +304,18 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
             try:
                 seen_db = {r[0] for r in
                            conn.execute("SELECT t_id FROM fetch_state").fetchall()}
-                for tid in tids:
+                consecutive_seen = 0
+                paused_page = None
+                for tid, tid_page in pairs:
                     if tid in seen_db:
                         skipped += 1
+                        consecutive_seen += 1
+                        set_sync_state(conn, phase="incremental", last_page=tid_page,
+                                       last_tid=tid, new_count=new, skipped_count=skipped)
+                        if consecutive_seen >= early_stop and early_stop > 0:
+                            break
                         continue
+                    consecutive_seen = 0
                     try:
                         full = fetch_detail_text(page, tid)
                         kept = trim_receipt_text(full)
@@ -317,13 +326,31 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
                         with open(os.path.join(RECEIPT_DIR, name), "w",
                                   encoding="utf-8") as f:
                             f.write(kept)
+                        conn.commit()
                         new += 1
                         seen_db.add(tid)
+                        set_sync_state(conn, phase="backfill", last_page=tid_page,
+                                       last_tid=tid, new_count=new, skipped_count=skipped)
                         if latest_only:
                             break
                     except Exception as e:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        if _classify_failure(_read_body(page)) == "overload":
+                            paused_page = tid_page
+                            break
                         needs.append(tid)
                         print(f"Receipt {tid} needs review: {type(e).__name__}: {e}")
+                if paused_page is not None:
+                    LAST_SYNC_ERROR = (
+                        f"Paused at page {paused_page} after {new} new receipt(s) "
+                        f"({skipped} skipped) — Lidl asked us to wait; "
+                        f"next Sync resumes from the saved cursor"
+                    )
+                    print(LAST_SYNC_ERROR)
+                    return 4
             finally:
                 conn.close()
         finally:
