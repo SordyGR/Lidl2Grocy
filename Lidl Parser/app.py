@@ -6,8 +6,6 @@ import sys
 import csv
 import io
 import sqlite3
-import threading
-import time
 from datetime import date, timedelta
 import pandas as pd
 
@@ -27,13 +25,6 @@ RECEIPT_DIR = os.path.join(BASE_DIR, "receipts")
 
 app = Flask(__name__)
 app.secret_key = "lidl-local-dev"
-
-_FETCH = {"running": False, "result": None, "error": None}
-_FETCH_LOCK = threading.Lock()
-_LOGIN = {"running": False}
-_LOGIN_LOCK = threading.Lock()
-_LOGIN_COOLDOWN_UNTIL = 0.0
-LOGIN_COOLDOWN_S = 30 * 60
 
 
 def _ext_token():
@@ -116,108 +107,6 @@ def api_ext_receipt():
                         "items": res["items"], "total": res["total"]})
     finally:
         conn.close()
-
-
-def _run_sync():
-    try:
-        # Full catch-up: fetch every new receipt since the last sync, not
-        # just the first one (latest_only would stop after one import).
-        rc = fetch_lidl.cmd_sync(latest_only=False)
-        if isinstance(rc, int) and rc != 0:
-            user, pw = fetch_lidl.get_lidl_creds()
-            if not user or not pw:
-                _FETCH["error"] = ("No Lidl credentials saved — enter them "
-                                   "in Settings, then sync again")
-            else:
-                _FETCH["error"] = ("Lidl auto-login failed — Lidl may be blocking "
-                                   "automation; use the paste fallback on the "
-                                   "dashboard")
-        else:
-            _FETCH["result"] = rc
-    except Exception as e:
-        _FETCH["error"] = str(e)[:300]
-    finally:
-        _FETCH["running"] = False
-
-
-@app.route("/fetch/run", methods=["POST"])
-def fetch_run():
-    with _LOGIN_LOCK:
-        if _LOGIN["running"]:
-            return jsonify({"started": False, "reason": "login in progress"})
-    with _FETCH_LOCK:
-        if _FETCH["running"]:
-            return jsonify({"started": False, "reason": "already running"})
-        _FETCH.update({"running": True, "result": None, "error": None})
-    threading.Thread(target=_run_sync, daemon=True).start()
-    return jsonify({"started": True})
-
-
-@app.route("/api/fetch_status")
-def api_fetch_status():
-    conn = get_db()
-    last = conn.execute("SELECT MAX(fetched_at) AS at FROM fetch_state").fetchone()["at"]
-    conn.close()
-    return jsonify({"running": _FETCH["running"], "result": _FETCH["result"],
-                    "error": _FETCH["error"], "last_sync": last})
-
-
-@app.route("/fetch/login", methods=["GET", "POST"])
-def fetch_login():
-    if request.method == "GET":
-        return render_template(_tpl("fetch_login.html"),
-                               email=app_settings.get("LIDL_USER") or "",
-                               real_login_url=fetch_lidl.HISTORY_URL.format(page=1))
-    email = (request.form.get("email") or "").strip()
-    pw = request.form.get("password") or ""
-    save = request.form.get("save") == "on"
-    if not email or not pw:
-        return jsonify({"ok": False, "error": "Email and password required"}), 401
-    global _LOGIN_COOLDOWN_UNTIL
-    now = time.time()
-    if now < _LOGIN_COOLDOWN_UNTIL:
-        wait_min = int((_LOGIN_COOLDOWN_UNTIL - now) / 60) + 1
-        return jsonify({"ok": False,
-                        "error": f"Lidl asked us to wait — retry in about {wait_min} min, only once."}), 429
-    with _LOGIN_LOCK:
-        if _LOGIN["running"]:
-            return jsonify({"ok": False, "error": "Login already in progress"}), 409
-        if _FETCH["running"]:
-            return jsonify({"ok": False, "error": "Sync in progress — try again when it finishes"}), 409
-        _LOGIN["running"] = True
-    try:
-        try:
-            ok = fetch_lidl.attempt_login(email, pw)
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)[:200]}), 401
-        if not ok:
-            note = getattr(fetch_lidl, "LAST_LOGIN_NOTE", None)
-            if note == "overload":
-                _LOGIN_COOLDOWN_UNTIL = time.time() + LOGIN_COOLDOWN_S
-                return jsonify({"ok": False,
-                                "error": "Lidl is temporarily refusing automated sign-in "
-                                         "(system overload). Wait about 30 min, then try once."}), 429
-            if note == "bad-password":
-                return jsonify({"ok": False,
-                                "error": "Lidl rejected the password. Check it and retry — "
-                                         "or log in on the real Lidl site instead."}), 401
-            if note == "no-account":
-                return jsonify({"ok": False,
-                                "error": "Lidl shows account creation for this email — "
-                                         "it is not registered. Check the email."}), 401
-            if note == "timeout":
-                return jsonify({"ok": False,
-                                "error": "Lidl's login page never reached the password step "
-                                         "(too slow or blocked). Retry once, or use manual login."}), 401
-            return jsonify({"ok": False, "error": "Sign-in failed. Check email/password and retry."}), 401
-        if save:
-            app_settings.set("LIDL_USER", email)
-            import secret_store as _enc
-            _enc.set_secret("LIDL_PASS", pw)
-        return jsonify({"ok": True})
-    finally:
-        with _LOGIN_LOCK:
-            _LOGIN["running"] = False
 
 
 @app.route("/fetch/paste", methods=["POST"])
@@ -337,8 +226,7 @@ def dashboard():
     """)
     return render_template(_tpl("dashboard.html"), k=kpis, monthly=monthly,
                            by_cat=by_cat, recent=recent, top=top,
-                           user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "",
-                           real_login_url=fetch_lidl.HISTORY_URL.format(page=1))
+                           user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "")
 
 
 def _pie_bounds(pie, frm, to):

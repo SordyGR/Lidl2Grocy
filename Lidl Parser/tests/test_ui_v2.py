@@ -54,5 +54,3 @@ def test_v2_detail_receipts_prices_login(tmp_path, monkeypatch):
     conn.close()
     assert c.get(f"/products/{pid}").status_code == 200
     assert "v2.css" in c.get("/prices").get_data(as_text=True)
-    assert "v2.css" in c.get("/fetch/login").get_data(as_text=True)
-    assert "lidl-hellas.gr" in c.get("/fetch/login").get_data(as_text=True)

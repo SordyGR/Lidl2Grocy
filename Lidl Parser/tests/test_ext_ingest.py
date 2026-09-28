@@ -88,3 +88,17 @@ def test_receipt_end_to_end_with_fixture(tmp_path, monkeypatch):
     conn.close()
     s = c.get("/api/ext/status", headers=h).get_json()
     assert s["ok"] is True and s["receipts"] == 1 and s["last_sync"] is not None
+
+
+def test_paste_route(tmp_path, monkeypatch):
+    import os
+    _client(tmp_path, monkeypatch)
+    import app as appmod
+    appmod.app.testing = True
+    c = appmod.app.test_client()
+    src = os.path.join(os.path.dirname(appmod.__file__), "tests", "data_paste.txt")
+    assert os.path.exists(src), "fixture missing"
+    with open(src, encoding="utf-8") as f:
+        text = f.read()
+    r = c.post("/fetch/paste", data={"text": text, "tid": "test-1"}, follow_redirects=True)
+    assert r.status_code == 200

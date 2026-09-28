@@ -59,12 +59,3 @@ def test_backfill_creates_missing_products(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     # _client reset DB; re-check via fresh backfill path is covered above; detail reachable:
     assert row["id"] > 0
-
-
-def test_login_popup_links_real_lidl(tmp_path, monkeypatch):
-    c = _client(tmp_path, monkeypatch)
-    body = c.get("/fetch/login").get_data(as_text=True)
-    assert "lidl-hellas.gr" in body
-    assert "/fetch/paste" in body
-    dash = c.get("/").get_data(as_text=True)
-    assert "lidl-hellas.gr" in dash
