@@ -1437,16 +1437,10 @@ def settings():
         else:
             app_settings.set("GROCY_URL", url)
             app_settings.set("GROCY_API_KEY", (request.form.get("GROCY_API_KEY") or "").strip())
-        app_settings.set("LIDL_USER", (request.form.get("LIDL_USER") or "").strip())
-        pw = request.form.get("LIDL_PASS") or ""
-        if pw:
-            import secret_store as _enc
-            _enc.set_secret("LIDL_PASS", pw)
-        flash("Settings saved (Lidl password is encrypted at rest)")
+        flash("Settings saved")
         return redirect(url_for("settings"))
-    vals = {k: app_settings.get(k) for k in ("LIDL_USER", "GROCY_URL", "GROCY_API_KEY")}
-    import secret_store as _enc
-    vals["LIDL_PASS_SET"] = bool(_enc.get_secret("LIDL_PASS"))
+    vals = {k: app_settings.get(k) for k in ("GROCY_URL", "GROCY_API_KEY")}
+    vals["EXT_INGEST_TOKEN"] = _ext_token()
     conn = get_db()
     users = [dict(r) for r in conn.execute("SELECT id, name FROM users ORDER BY name").fetchall()]
     cards = [dict(r) for r in conn.execute(
@@ -1489,11 +1483,10 @@ def settings_units_refresh():
     return redirect(url_for("settings"))
 
 
-@app.route("/settings/clear-lidl-pass", methods=["POST"])
-def settings_clear_lidl_pass():
-    import secret_store as _enc
-    _enc.clear_secret("LIDL_PASS")
-    flash("Saved Lidl password cleared")
+@app.route("/settings/ext-regenerate", methods=["POST"])
+def settings_ext_regenerate():
+    app_settings.set("EXT_INGEST_TOKEN", secrets.token_urlsafe(32))
+    flash("Extension token regenerated — update the Firefox extension")
     return redirect(url_for("settings"))
 
 

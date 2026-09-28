@@ -27,21 +27,18 @@ def test_grocy_url_without_api_rejected(tmp_path, monkeypatch):
     assert ss.get("GROCY_URL") == ""
 
 
-def test_password_preserved_on_edit_without_password(tmp_path, monkeypatch):
+def test_settings_shows_extension_token_and_regenerates(tmp_path, monkeypatch):
     import db as dbmod
-    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / "s3.db"))
+    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / "s4.db"))
     dbmod.init_db()
     import app as appmod
     appmod.app.testing = True
     c = appmod.app.test_client()
-    c.post("/settings", data={"GROCY_URL": "https://g.example/api",
-                              "GROCY_API_KEY": "k", "LIDL_USER": "u",
-                              "LIDL_PASS": "secret123"}, follow_redirects=True)
-    import settings_store as ss
-    import secret_store as enc
-    assert enc.get_secret("LIDL_PASS") == "secret123"
-    # Grocy-only edit: form omits the LIDL_PASS key entirely
-    c.post("/settings", data={"GROCY_URL": "https://g.example/api",
-                              "GROCY_API_KEY": "k2",
-                              "LIDL_USER": "u"}, follow_redirects=True)
-    assert enc.get_secret("LIDL_PASS") == "secret123"
+    body = c.get("/settings").get_data(as_text=True)
+    assert "Extension" in body
+    assert "LIDL_PASS" not in body and "lidl-profile" not in body
+    old = appmod._ext_token()
+    assert old in body
+    r = c.post("/settings/ext-regenerate", follow_redirects=True)
+    assert r.status_code == 200
+    assert appmod._ext_token() != old
