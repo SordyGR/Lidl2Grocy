@@ -601,6 +601,37 @@ def import_products_resolve():
     return redirect(url_for("products"))
 
 
+@app.route("/categories/merge", methods=["GET", "POST"])
+def categories_merge():
+    conn = get_db()
+    local = [r[0] for r in conn.execute(
+        "SELECT DISTINCT COALESCE(category,'Misc') FROM products ORDER BY 1").fetchall()]
+    groups = [r[0] for r in conn.execute("SELECT name FROM categories ORDER BY name").fetchall()]
+    if request.method == "POST":
+        renamed_cats = renamed_products = renamed_items = 0
+        for cat in local:
+            choice = (request.form.get(f"map:{cat}") or "__keep__").strip()
+            if choice in ("__keep__", "", cat) or choice not in groups:
+                continue
+            cur = conn.cursor()
+            cur.execute("UPDATE products SET category=?, updated_at=datetime('now') WHERE category=?",
+                        (choice, cat))
+            renamed_products += cur.rowcount
+            cur.execute("UPDATE items SET category=? WHERE category=?", (choice, cat))
+            renamed_items += cur.rowcount
+            renamed_cats += 1
+        conn.commit()
+        conn.close()
+        flash(f"Renamed {renamed_cats} categories ({renamed_products} products, {renamed_items} lines)")
+        return redirect(url_for("products"))
+    lower = {g.lower(): g for g in groups}
+    rows = [{"local": cat, "match": lower.get(cat.lower())} for cat in local]
+    unused = [g for g in groups if g.lower() not in {c.lower() for c in local}]
+    conn.close()
+    return render_template(_tpl("categories_merge.html"), rows=rows, groups=groups,
+                           unused=unused)
+
+
 @app.route("/backup-db")
 def backup_db():
     import tempfile

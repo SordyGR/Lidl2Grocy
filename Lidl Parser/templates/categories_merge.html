@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Merge categories with Grocy</h1>
+<p>Grocy's names are the source of truth. Exact matches need no action; map the rest or keep yours.</p>
+<form method="post">
+<table><tr><th>Local</th><th>Grocy</th></tr>
+{% for r in rows %}<tr><td>{{ r["local"] }}</td><td>
+{% if r["match"] %}matches Grocy <b>{{ r["match"] }}</b>
+<input type="hidden" name="map:{{ r["local"] }}" value="__keep__">
+{% else %}<select name="map:{{ r["local"] }}">
+<option value="__keep__">keep mine</option>
+{% for g in groups %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+</select>{% endif %}
+</td></tr>{% endfor %}
+</table>
+<button type="submit">Apply</button>
+</form>
+{% if unused %}
+<h2>Grocy groups with no local products</h2>
+<ul>{% for g in unused %}<li>{{ g }}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

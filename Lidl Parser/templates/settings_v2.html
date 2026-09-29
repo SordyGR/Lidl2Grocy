@@ -45,6 +45,7 @@
 <table><tr><th>Name</th><th>Grocy id</th><th>Source</th></tr>
 {% for c in categories %}<tr><td>{{ c['name'] }}</td><td>{{ c['grocy_id'] or '' }}</td><td>{{ c['source'] }}</td></tr>{% endfor %}
 </table>
+<p><a href="{{ url_for('categories_merge') }}">Merge local categories with Grocy groups</a></p>
 </div>
 <div class="card">
 <h2>Users</h2>
