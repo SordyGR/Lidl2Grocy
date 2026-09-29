@@ -2,6 +2,8 @@
 {% block content %}
 <h1>Products</h1>
 <p><a href="/export-products.xlsx">Export</a> · <a href="/import-products">Import</a></p>
+{% if dup_groups %}<p class="notice-warn">{{ dup_groups }} duplicate group(s) found —
+<a href="{{ url_for('products_duplicates') }}">review &amp; merge</a></p>{% endif %}
 {% if not grocy_configured %}
 <p class="notice-warn">Grocy not configured — set GROCY_URL (with /api) + GROCY_API_KEY to enable linking.</p>
 {% elif grocy_error %}

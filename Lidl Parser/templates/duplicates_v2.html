@@ -1,0 +1,25 @@
+{% extends "base_v2.html" %}
+{% block content %}
+<h1>Duplicate products</h1>
+<p class="sub">Same product spelled differently (case/accents). Pick the winner per group — pre-selected by item count. Losers fold into the winner and disappear.</p>
+{% if not groups %}
+<p class="sub">No duplicates found.</p>
+{% else %}
+<div class="card">
+<form method="post" action="{{ url_for('products_duplicates_merge') }}">
+{% for g in groups %}
+<h3>Group {{ loop.index }} ({{ g["rows"]|length }} spellings)</h3>
+<table><tr><th>Winner</th><th>Raw</th><th>Clean</th><th>Category</th><th>Lines</th><th>Grocy</th></tr>
+{% for r in g["rows"] %}<tr>
+<td><input type="radio" name="winner:{{ g["key"] }}" value="{{ r["raw"] }}"
+{% if loop.first %}checked{% endif %}></td>
+<td>{{ r["raw"] }}</td><td>{{ r["clean"] }}</td><td>{{ r["category"] }}</td>
+<td>{{ r["nitems"] }}</td><td>{{ r["grocy_id"] or "—" }}</td>
+</tr>{% endfor %}
+</table>
+{% endfor %}
+<button class="btn" type="submit">Merge all</button>
+</form>
+</div>
+{% endif %}
+{% endblock %}

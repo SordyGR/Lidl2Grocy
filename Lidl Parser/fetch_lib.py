@@ -54,6 +54,15 @@ def pick_filename(receipt_dir: str, conn, yy: str, mm: str, dd: str) -> str:
         seq += 1
 
 
+def canonical_raw(conn, raw: str) -> str:
+    """First-seen spelling wins: reuse an existing product raw that matches
+    accent-/case-insensitively, so receipt spelling variance (ML/ml, accents)
+    cannot fork duplicate product rows."""
+    row = conn.execute("SELECT raw FROM products WHERE grnorm(raw)=grnorm(?) ORDER BY id LIMIT 1",
+                       (raw,)).fetchone()
+    return row[0] if row else raw
+
+
 def import_kept_receipt(conn, kept_text: str, filename: str, t_id) -> dict:
     from receipt_parser import (parse_receipt, parse_receipt_date,
                                 smart_match, build_memory, extract_card_last4)
@@ -75,17 +84,18 @@ def import_kept_receipt(conn, kept_text: str, filename: str, t_id) -> dict:
     cur.execute("DELETE FROM items WHERE receipt_id=?", (rid,))
     mem = build_memory(_pd.read_sql("SELECT raw, clean, category FROM products", conn))
     for _, item in df.iterrows():
-        clean, cat, mtype, score = smart_match(item["Product"], mem)
+        raw = canonical_raw(conn, item["Product"])
+        clean, cat, mtype, score = smart_match(raw, mem)
         tot = float(item["Qty"] * item["Unit Price"])
         cur.execute(
             """INSERT INTO items (receipt_id, raw, clean, category, qty, unit_price,
                                   vat, discount, total, final, match_type, match_score)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (rid, item["Product"], clean, cat, float(item["Qty"]),
+            (rid, raw, clean, cat, float(item["Qty"]),
              float(item["Unit Price"]), float(item["VAT"]), float(item["Discount"]),
              round(tot, 2), round(tot - float(item["Discount"]), 2), mtype, float(score)))
         cur.execute("""INSERT OR IGNORE INTO products (raw, clean, category, needs_review)
-                       VALUES (?,?,?,1)""", (item["Product"], clean, cat))
+                       VALUES (?,?,?,1)""", (raw, clean, cat))
     if t_id is not None:
         cur.execute("INSERT OR IGNORE INTO fetch_state (t_id, filename) VALUES (?, ?)", (t_id, filename))
     conn.commit()

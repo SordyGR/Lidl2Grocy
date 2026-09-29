@@ -13,7 +13,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session, Response
-from db import init_db, get_db
+from db import init_db, get_db, grnorm
 from fetch_lib import (trim_receipt_text, receipt_body_date,
                        pick_filename, import_kept_receipt)
 from receipt_parser import parse_receipt, parse_receipt_date, smart_match, build_memory, extract_card_last4
@@ -690,18 +690,20 @@ def upload():
             conn.commit()
             rid = cur.execute("SELECT id FROM receipts WHERE filename=?", (fname,)).fetchone()["id"]
             cur.execute("DELETE FROM items WHERE receipt_id=?", (rid,))
+            from fetch_lib import canonical_raw
             for _, item in df.iterrows():
-                clean, cat, mtype, score = smart_match(item["Product"], mem)
+                raw = canonical_raw(conn, item["Product"])
+                clean, cat, mtype, score = smart_match(raw, mem)
                 tot = float(item["Qty"] * item["Unit Price"])
                 cur.execute(
                     """INSERT INTO items (receipt_id, raw, clean, category, qty, unit_price,
                                           vat, discount, total, final, match_type, match_score)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (rid, item["Product"], clean, cat, float(item["Qty"]),
+                    (rid, raw, clean, cat, float(item["Qty"]),
                      float(item["Unit Price"]), float(item["VAT"]), float(item["Discount"]),
                      round(tot, 2), round(tot - float(item["Discount"]), 2), mtype, float(score)))
                 cur.execute("""INSERT OR IGNORE INTO products (raw, clean, category, needs_review)
-                               VALUES (?,?,?,1)""", (item["Product"], clean, cat))
+                               VALUES (?,?,?,1)""", (raw, clean, cat))
             imported += 1
         conn.commit()
         conn.close()
@@ -781,6 +783,7 @@ def products():
     ).fetchall()
     cats = conn.execute("SELECT DISTINCT category FROM products ORDER BY category").fetchall()
     grocy_cats = [r[0] for r in conn.execute("SELECT name FROM categories ORDER BY name").fetchall()]
+    dup_groups = conn.execute("SELECT COUNT(*) FROM (SELECT grnorm(raw) AS k FROM products GROUP BY k HAVING COUNT(*) > 1)").fetchone()[0]
     linked_ids = [r[0] for r in conn.execute("SELECT grocy_id FROM products WHERE grocy_id IS NOT NULL").fetchall()]
     conn.close()
     grocy_error = None
@@ -828,7 +831,63 @@ def products():
                            grocy_error=grocy_error, orphans=sorted(orphans),
                            sort=sort, direction=direction, cat=cat, gf=gf, tf=tf, per=per,
                            page=page, pages=pages, count=count, grocy_products=grocy_products,
-                           locations=lookups["locations"], quantity_units=lookups["quantity_units"])
+                           locations=lookups["locations"], quantity_units=lookups["quantity_units"],
+                           dup_groups=dup_groups)
+
+
+@app.route("/products/duplicates")
+def products_duplicates():
+    groups = [{"key": grnorm(g[0]["raw"]),
+               "rows": sorted(g, key=lambda r: (-r["nitems"], r["id"]))}
+              for g in _duplicate_groups()]
+    return render_template(_tpl("duplicates.html"), groups=groups)
+
+
+@app.route("/products/duplicates/merge", methods=["POST"])
+def products_duplicates_merge():
+    groups = _duplicate_groups()
+    conn = get_db()
+    merged = 0
+    for g in groups:
+        key = "winner:" + grnorm(g[0]["raw"])
+        raws = [r["raw"] for r in g]
+        winner = request.form.get(key)
+        if winner not in raws:
+            winner = sorted(g, key=lambda r: (-r["nitems"], r["id"]))[0]["raw"]
+        w = next(r for r in g if r["raw"] == winner)
+        for l in g:
+            if l["raw"] == winner:
+                continue
+            conn.execute("UPDATE items SET raw=?, clean=?, category=? WHERE raw=?",
+                         (winner, w["clean"], w["category"], l["raw"]))
+            if w["grocy_id"] is None and l["grocy_id"] is not None:
+                conn.execute("""UPDATE products SET grocy_id=?, grocy_name=?, grocy_track=?,
+                                purchase_qu_id=?, qu_factor=? WHERE raw=?""",
+                             (l["grocy_id"], l["grocy_name"], l["grocy_track"],
+                              l["purchase_qu_id"], l["qu_factor"], winner))
+                w["grocy_id"] = l["grocy_id"]
+            conn.execute("DELETE FROM products WHERE raw=?", (l["raw"],))
+            merged += 1
+    conn.commit()
+    conn.close()
+    flash(f"Merged {merged} duplicate products")
+    return redirect(url_for("products_duplicates"))
+
+
+def _duplicate_groups():
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT p.id AS id, p.raw AS raw, p.clean AS clean, p.category AS category,
+               p.grocy_id AS grocy_id, p.grocy_name AS grocy_name,
+               p.grocy_track AS grocy_track, p.purchase_qu_id AS purchase_qu_id,
+               p.qu_factor AS qu_factor, COUNT(i.id) AS nitems
+        FROM products p LEFT JOIN items i ON i.raw = p.raw
+        GROUP BY p.id ORDER BY p.id""").fetchall()
+    conn.close()
+    groups = {}
+    for r in rows:
+        groups.setdefault(grnorm(r["raw"]), []).append(dict(r))
+    return [v for v in groups.values() if len(v) > 1]
 
 
 @app.route("/api/products")
