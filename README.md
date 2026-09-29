@@ -152,7 +152,24 @@ attaches a local product to an existing Grocy product. **New-item page**
 (`/mappings/new-item`) is the ERP-style flow: identity (name/brand/barcode/
 description), storage (location, min stock), units (purchase/stock +
 conversion factor), classification (product group, parent product) — creates
-in Grocy, attaches the barcode, and links locally in one submit.
+in Grocy, attaches the barcode, and links locally in one submit. The category
+inputs suggest cached Grocy categories; the group dropdown falls back to the
+cache when Grocy is unreachable.
+
+### Sharing, backup & categories
+- **Products → Export** downloads your curated catalog (clean names,
+  categories, barcodes…) as xlsx; a friend imports it via
+  **Products → Import**. New products auto-add; differing rows land on a
+  conflict review page (keep local / keep new / keep both — both renames to
+  `<raw> [from <file>]`); same-barcode-different-product rows are listed as
+  warnings. Grocy links are never shared (each Grocy differs).
+- **Settings → Download full DB backup**: consistent snapshot of the whole
+  SQLite DB.
+- **Settings → Categories → Refresh from Grocy** caches Grocy's product
+  groups locally (like Units): they back the new-item dropdown offline and
+  seed the hub suggestions. **Excluded from charts** checkboxes leave
+  categories out of dashboard charts, KPIs spent, top products and ABC
+  (counts, receipts and exports stay whole).
 
 ### Prices & ABC analysis
 Pick a metric (spend / quantity / frequency) and top-N: the page seeds the
@@ -164,8 +181,9 @@ the page exports the full lines + price trends workbook.
 
 ### Settings reference
 Extension token (show/copy/regenerate — paste it into the Firefox extension),
-Grocy URL/key, users, card→user map. Resolution order per key: UI-saved
-value → environment → empty. Grocy URL must end with `/api`.
+Grocy URL/key, users, card→user map, cached Units/Categories (each with a
+Refresh from Grocy), chart exclusions, full DB backup link. Resolution order
+per key: UI-saved value → environment → empty. Grocy URL must end with `/api`.
 
 ### Receipt lifecycle
 ```
