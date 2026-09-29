@@ -66,6 +66,35 @@ def _excluded_sql(alias="COALESCE(category,'Misc')"):
     return f" AND {alias} NOT IN ({holders})", excl
 
 
+def _grocy_base():
+    try:
+        base_url, _ = grocy_client.get_config()
+    except Exception:
+        return ""
+    return base_url.rstrip("/").removesuffix("/api")
+
+
+def _abc_rank_map():
+    try:
+        xclause, xargs = _excluded_sql("COALESCE(i.category,'Misc')")
+        rows = query(f"""
+            SELECT i.clean AS clean, ROUND(SUM(i.final),2) AS v
+            FROM items i JOIN receipts r ON r.id=i.receipt_id
+            WHERE r.receipt_date IS NOT NULL{xclause}
+            GROUP BY i.clean ORDER BY v DESC
+        """, xargs)
+    except Exception:
+        return {}
+    total = sum(float(r["v"] or 0) for r in rows) or 1.0
+    cum, out = 0.0, {}
+    for idx, r in enumerate(rows, start=1):
+        cum += float(r["v"] or 0)
+        pct = round(100 * cum / total, 1)
+        cls = "A" if pct <= 80 else ("B" if pct <= 95 else "C")
+        out[r["clean"]] = {"rank": idx, "class": cls}
+    return out
+
+
 @app.route("/api/ext/status")
 def api_ext_status():
     if not _ext_authorized():
@@ -118,13 +147,26 @@ def api_ext_receipt():
         if conn.execute("SELECT 1 FROM fetch_state WHERE t_id=?", (tid,)).fetchone():
             return jsonify({"status": "duplicate", "tid": tid})
         try:
+            from fetch_lib import extract_mark as _extract_mark
+            mark = _extract_mark(text)
+            if mark:
+                hit = conn.execute("SELECT filename FROM receipts WHERE mark=?", (mark,)).fetchone()
+                if hit:
+                    conn.execute("INSERT OR IGNORE INTO fetch_state (t_id, filename) VALUES (?, ?)",
+                                 (tid, hit["filename"]))
+                    conn.commit()
+                    return jsonify({"status": "duplicate", "tid": tid, "mark": mark})
             kept = trim_receipt_text(text)
             yy, mm, dd = receipt_body_date(kept)
             name = pick_filename(RECEIPT_DIR, conn, yy, mm, dd)
-            res = import_kept_receipt(conn, kept, name, tid)
+            res = import_kept_receipt(conn, kept, name, tid, mark=mark)
+            if res.get("duplicate"):
+                return jsonify({"status": "duplicate", "tid": tid, "mark": mark})
         except Exception as e:
             return jsonify({"status": "error", "tid": tid, "error": str(e)[:200]}), 422
         os.makedirs(RECEIPT_DIR, exist_ok=True)
+        if mark and "MAPK:" not in kept:
+            kept = kept + f"MAPK: {mark}\n"
         with open(os.path.join(RECEIPT_DIR, name), "w", encoding="utf-8") as f:
             f.write(kept)
         return jsonify({"status": "imported", "tid": tid,
@@ -233,11 +275,22 @@ def dashboard():
             WHERE r.receipt_date BETWEEN ? AND ?{ixclause}
             GROUP BY c ORDER BY total DESC LIMIT 12
         """, (frm, to, *ixargs))
+        full_total = query(f"""
+            SELECT COALESCE(SUM(final),0) AS t
+            FROM items i JOIN receipts r ON r.id=i.receipt_id
+            WHERE r.receipt_date BETWEEN ? AND ?{ixclause}
+        """, (frm, to, *ixargs))[0]["t"]
     else:
         by_cat = query(f"""
             SELECT COALESCE(category,'Misc') AS c, ROUND(SUM(final),2) AS total
             FROM items WHERE 1=1{xclause} GROUP BY c ORDER BY total DESC LIMIT 12
         """, xargs)
+        full_total = kpis["spent"]
+    by_cat = [dict(r) for r in by_cat]
+    shown = round(sum(float(r["total"] or 0) for r in by_cat), 2)
+    full_total = round(float(full_total or 0), 2)
+    if full_total - shown > 0.004:
+        by_cat.append({"c": "Other", "total": round(full_total - shown, 2)})
     recent = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC LIMIT 10")
     top = query(f"""
         SELECT clean, COUNT(*) AS n, ROUND(SUM(final),2) AS total
@@ -253,7 +306,8 @@ def dashboard():
     """, ixargs)
     return render_template(_tpl("dashboard.html"), k=kpis, monthly=monthly,
                            by_cat=by_cat, recent=recent, top=top,
-                           user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "")
+                           user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "",
+                           pie_total=round(sum(float(r["total"] or 0) for r in by_cat), 2))
 
 
 def _pie_bounds(pie, frm, to):
@@ -289,6 +343,35 @@ def _pie_bounds(pie, frm, to):
 def receipts():
     rows = query("SELECT * FROM receipts ORDER BY receipt_date DESC, receipt_seq ASC, id ASC")
     return render_template(_tpl("receipts.html"), rows=rows)
+
+
+@app.route("/receipts/<int:rid>/download")
+def receipt_download(rid):
+    conn = get_db()
+    r = conn.execute("SELECT * FROM receipts WHERE id=?", (rid,)).fetchone()
+    if not r:
+        conn.close()
+        return "Not found", 404
+    fname = r["filename"] or f"receipt-{rid}.txt"
+    path = os.path.join(RECEIPT_DIR, os.path.basename(fname))
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        items = conn.execute("SELECT raw, qty, unit_price, final FROM items WHERE receipt_id=? ORDER BY id",
+                             (rid,)).fetchall()
+        conn.close()
+        lines = [f"{fname} {r['receipt_date'] or ''}".strip()]
+        for it in items:
+            lines.append(f"{it['raw']} x{it['qty']} @ {it['unit_price']} = {it['final']}")
+        text = "\n".join(lines) + "\n"
+        resp = app.response_class(text, mimetype="text/plain; charset=utf-8")
+        resp.headers["Content-Disposition"] = f"attachment; filename={os.path.basename(fname)}"
+        return resp
+    conn.close()
+    resp = app.response_class(text, mimetype="text/plain; charset=utf-8")
+    resp.headers["Content-Disposition"] = f"attachment; filename={os.path.basename(fname)}"
+    return resp
 
 
 @app.route("/receipts/rescan-cards", methods=["POST"])
@@ -667,6 +750,11 @@ def upload():
         for f in files:
             fname = f.filename
             text = f.read().decode("utf-8", errors="replace")
+            from fetch_lib import extract_mark as _extract_mark
+            mark = _extract_mark(text)
+            if mark and cur.execute("SELECT 1 FROM receipts WHERE mark=?", (mark,)).fetchone():
+                flash(f"{fname}: already imported (MAPK {mark}) — skipped")
+                continue
             df = parse_receipt(text, fname)
             if df.empty:
                 flash(f"{fname}: no items parsed")
@@ -684,9 +772,9 @@ def upload():
             except OSError:
                 pass
             cur.execute(
-                """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (fname, iso_date, seq, len(df), round(total, 2), card_last4))
+                """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4, mark)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (fname, iso_date, seq, len(df), round(total, 2), card_last4, mark))
             conn.commit()
             rid = cur.execute("SELECT id FROM receipts WHERE filename=?", (fname,)).fetchone()["id"]
             cur.execute("DELETE FROM items WHERE receipt_id=?", (rid,))
@@ -832,7 +920,8 @@ def products():
                            sort=sort, direction=direction, cat=cat, gf=gf, tf=tf, per=per,
                            page=page, pages=pages, count=count, grocy_products=grocy_products,
                            locations=lookups["locations"], quantity_units=lookups["quantity_units"],
-                           dup_groups=dup_groups)
+                           dup_groups=dup_groups, grocy_base=_grocy_base(),
+                           abc_rank=_abc_rank_map())
 
 
 @app.route("/products/duplicates")
@@ -1034,7 +1123,7 @@ def product_detail(pid):
     except Exception:
         suggestions = []
     return render_template(_tpl("product_detail.html"), p=p, receipts=receipts, units=units,
-                           suggestions=suggestions, cats=cats)
+                           suggestions=suggestions, cats=cats, grocy_base=_grocy_base())
 
 
 def _prefill_qu(conn, raw, gid):
@@ -1649,6 +1738,22 @@ def api_price_history_multi():
     return jsonify(out)
 
 
+@app.route("/api/category_history")
+def api_category_history():
+    """Per-line points grouped by category — same shape as price_history_multi,
+    so the Prices stats table and trend chart work unchanged in category mode."""
+    cats = [c for c in request.args.getlist("category") if c.strip()][:50]
+    out = {}
+    for cat in cats:
+        out[cat] = [dict(x) for x in query("""
+            SELECT r.receipt_date AS d, i.unit_price AS p, i.qty AS q
+            FROM items i JOIN receipts r ON r.id=i.receipt_id
+            WHERE COALESCE(i.category,'Misc')=? AND r.receipt_date IS NOT NULL
+            ORDER BY d
+        """, (cat,))]
+    return jsonify(out)
+
+
 ABC_METRICS = {
     "spend": "ROUND(SUM(i.final),2)",
     "quantity": "ROUND(SUM(i.qty),3)",
@@ -1660,28 +1765,39 @@ def api_abc_analysis():
     metric = request.args.get("metric", "spend")
     if metric not in ABC_METRICS:
         metric = "spend"
+    group = request.args.get("group", "product")
+    if group not in ("product", "category"):
+        group = "product"
     try:
         top = int(request.args.get("top", "5"))
     except ValueError:
         top = 5
     top = max(1, min(top, 50))
     xclause, xargs = _excluded_sql("COALESCE(i.category,'Misc')")
-    rows = query(f"""
-        SELECT i.clean AS clean, {ABC_METRICS[metric]} AS v
-        FROM items i JOIN receipts r ON r.id=i.receipt_id
-        WHERE r.receipt_date IS NOT NULL{xclause}
-        GROUP BY i.clean ORDER BY v DESC
-    """, xargs)
+    if group == "category":
+        rows = query(f"""
+            SELECT COALESCE(i.category,'Misc') AS clean, {ABC_METRICS[metric]} AS v
+            FROM items i JOIN receipts r ON r.id=i.receipt_id
+            WHERE r.receipt_date IS NOT NULL{xclause}
+            GROUP BY COALESCE(i.category,'Misc') ORDER BY v DESC
+        """, xargs)
+    else:
+        rows = query(f"""
+            SELECT i.clean AS clean, {ABC_METRICS[metric]} AS v
+            FROM items i JOIN receipts r ON r.id=i.receipt_id
+            WHERE r.receipt_date IS NOT NULL{xclause}
+            GROUP BY i.clean ORDER BY v DESC
+        """, xargs)
     total = sum(float(r["v"] or 0) for r in rows) or 1.0
     cum, out, classes = 0.0, [], {"A": 0, "B": 0, "C": 0}
-    for r in rows:
+    for idx, r in enumerate(rows, start=1):
         cum += float(r["v"] or 0)
         pct = round(100 * cum / total, 1)
         cls = "A" if pct <= 80 else ("B" if pct <= 95 else "C")
         classes[cls] += 1
         out.append({"clean": r["clean"], "value": r["v"],
-                    "cum_pct": pct, "class": cls})
-    return jsonify({"metric": metric, "rows": out[:top], "total": round(total, 2),
+                    "cum_pct": pct, "class": cls, "rank": idx})
+    return jsonify({"metric": metric, "group": group, "rows": out[:top], "total": round(total, 2),
                     "count": len(rows), "classes": classes})
 
 

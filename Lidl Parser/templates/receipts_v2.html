@@ -9,6 +9,7 @@
 {% for r in rows %}<div class="row-card"><b>{{ r["receipt_date"] }}</b>
 <a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a>
 <span class="sub">{{ r["item_count"] }} items · {{ "%.2f"|format(r["total"]) }} €</span>
+<a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
 <form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
       onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')">
 <button>Delete</button>

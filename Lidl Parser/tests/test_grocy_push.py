@@ -312,7 +312,11 @@ def test_mappings_shows_track_toggle(tmp_path, monkeypatch):
     c = appmod.app.test_client()
     r = c.get("/products")
     assert r.status_code == 200
-    assert "mappings/track" in r.get_data(as_text=True)
+    assert "Linked" in r.get_data(as_text=True) or "—" in r.get_data(as_text=True)
+    pid = dbmod.get_db().execute("SELECT id FROM products WHERE raw='R'").fetchone()[0]
+    dbmod.get_db().close()
+    d = c.get(f"/products/{pid}").get_data(as_text=True)
+    assert "grocy_track" in d
 
 
 def _details(qu_purchase=10, qu_stock=11, factor=200.0):

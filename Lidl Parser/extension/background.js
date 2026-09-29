@@ -87,7 +87,7 @@ async function sweep(fullScan) {
     fresh = fresh.concat(r.new);
   }
   const skipped = tids.length - fresh.length;
-  let done = 0;
+  let done = 0, dups = 0;
   const failed = [];
   for (const t of fresh) {
     if (cancelFlag) break;
@@ -98,15 +98,16 @@ async function sweep(fullScan) {
     } else {
       try {
         const r = await postJSON(base, s.token, "/api/ext/receipt", {tid: t, text: d.text});
-        if (r.status !== "imported" && r.status !== "duplicate") failed.push(t);
+        if (r.status === "duplicate") dups += 1;
+        else if (r.status !== "imported") failed.push(t);
       } catch (e) { failed.push(t); }
     }
     done += 1;
     if (fullScan) await sleep(1500 + Math.random() * 1500);
   }
-  const ok = done - failed.length;
+  const ok = done - failed.length - dups;
   const tail = failed.length ? ` (${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""}) — rerun to retry` : "";
-  progress(`Done: ${ok} fetched • ${skipped} skipped • ${failed.length} failed${tail}. Review on the dashboard.`, true);
+  progress(`Done: ${ok} fetched • ${skipped + dups} skipped • ${failed.length} failed${tail}. Review on the dashboard.`, true);
 }
 
 browser.runtime.onMessage.addListener((m) => {

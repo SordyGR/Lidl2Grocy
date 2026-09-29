@@ -12,7 +12,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 from db import init_db, get_db
 from fetch_lib import (trim_receipt_text, receipt_body_date,
-                       pick_filename, import_kept_receipt)
+                       pick_filename, import_kept_receipt, extract_mark)
 
 RECEIPT_DIR = os.path.join(BASE_DIR, "receipts")
 
@@ -292,10 +292,22 @@ def cmd_sync(latest_only: bool = False, max_pages: int = 0, headed: bool = False
                         continue
                     try:
                         full = fetch_detail_text(page, tid)
+                        mark = extract_mark(full)
+                        if mark and conn.execute("SELECT 1 FROM receipts WHERE mark=?",
+                                                 (mark,)).fetchone():
+                            skipped += 1
+                            seen_db.add(tid)
+                            conn.execute("INSERT OR IGNORE INTO fetch_state (t_id, filename) "
+                                         "SELECT ?, filename FROM receipts WHERE mark=?",
+                                         (tid, mark))
+                            conn.commit()
+                            continue
                         kept = trim_receipt_text(full)
                         yy, mm, dd = receipt_body_date(kept)
                         name = pick_filename(RECEIPT_DIR, conn, yy, mm, dd)
-                        import_kept_receipt(conn, kept, name, tid)
+                        import_kept_receipt(conn, kept, name, tid, mark=mark)
+                        if mark and "MAPK:" not in kept:
+                            kept = kept + f"MAPK: {mark}\n"
                         os.makedirs(RECEIPT_DIR, exist_ok=True)
                         with open(os.path.join(RECEIPT_DIR, name), "w",
                                   encoding="utf-8") as f:
@@ -319,14 +331,20 @@ def cmd_paste(path: str, t_id) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         full = f.read()
     kept = trim_receipt_text(full)
+    mark = extract_mark(full)
     yy, mm, dd = receipt_body_date(kept)
     conn = get_db()
     try:
         name = pick_filename(RECEIPT_DIR, conn, yy, mm, dd)
-        res = import_kept_receipt(conn, kept, name, t_id)
+        res = import_kept_receipt(conn, kept, name, t_id, mark=mark)
+        if res.get("duplicate"):
+            print(f"already imported (MAPK {mark}) — skipped")
+            return res
     finally:
         conn.close()
     os.makedirs(RECEIPT_DIR, exist_ok=True)
+    if mark and "MAPK:" not in kept:
+        kept = kept + f"MAPK: {mark}\n"
     with open(os.path.join(RECEIPT_DIR, name), "w", encoding="utf-8") as f:
         f.write(kept)
     print(f"saved {name} ({res['items']} items, {res['total']:.2f} EUR)")

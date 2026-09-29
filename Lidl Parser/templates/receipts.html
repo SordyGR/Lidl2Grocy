@@ -9,7 +9,8 @@
 {% for r in rows %}<tr><td>{{ r["receipt_date"] }}</td>
 <td><a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a></td>
 <td>{{ r["item_count"] }}</td><td>{{ "%.2f"|format(r["total"]) }}</td>
-<td><form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
+<td><a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
+<form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
 onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>Delete</button></form></td></tr>{% endfor %}
 </table>
 {% endblock %}

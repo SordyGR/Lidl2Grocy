@@ -4,6 +4,17 @@ import re
 _START = re.compile(r"^\s*\d{1,2}\s+[^\W\d_]+\s+\d{4}\s*$")
 _BODY_DATE = re.compile(r"(\d{2})\.(\d{2})\.(\d{2})\s+\d{2}:\d{2}")
 _TOTAL = re.compile(r"\u03a3\u03a5\u039d\u039f\u039b\u039f\s+([\d,]+)")
+_MARK = re.compile(r"(?:MAPK|\u039c\u0391\u03a1\u039a)\s*:\s*(\d{9,20})")
+
+
+def extract_mark(full_text: str):
+    """Fiscal receipt id (MAPK/ΜΑΡΚ: digits) from the full page text.
+
+    Lives in the footer *after* the trimmed body, so callers must pass
+    the untrimmed text. Returns the digit string or None.
+    """
+    m = _MARK.search(full_text or "")
+    return m.group(1) if m else None
 
 
 def trim_receipt_text(full_text: str) -> str:
@@ -63,9 +74,18 @@ def canonical_raw(conn, raw: str) -> str:
     return row[0] if row else raw
 
 
-def import_kept_receipt(conn, kept_text: str, filename: str, t_id) -> dict:
+def import_kept_receipt(conn, kept_text: str, filename: str, t_id, mark=None) -> dict:
     from receipt_parser import (parse_receipt, parse_receipt_date,
                                 smart_match, build_memory, extract_card_last4)
+    if mark:
+        hit = conn.execute("SELECT filename FROM receipts WHERE mark=?", (mark,)).fetchone()
+        if hit:
+            if t_id is not None:
+                conn.execute("INSERT OR IGNORE INTO fetch_state (t_id, filename) VALUES (?, ?)",
+                             (t_id, hit["filename"]))
+                conn.commit()
+            return {"filename": hit["filename"], "items": 0, "total": 0.0,
+                    "t_id": t_id, "duplicate": True, "mark": mark}
     df = parse_receipt(kept_text, filename)
     if df.empty:
         raise ValueError(f"{filename}: no items parsed")
@@ -76,9 +96,9 @@ def import_kept_receipt(conn, kept_text: str, filename: str, t_id) -> dict:
     card_last4 = extract_card_last4(kept_text)
     cur = conn.cursor()
     cur.execute(
-        """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (filename, iso_date, seq, len(df), parsed_total, card_last4))
+        """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4, mark)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (filename, iso_date, seq, len(df), parsed_total, card_last4, mark))
     conn.commit()
     rid = cur.execute("SELECT id FROM receipts WHERE filename=?", (filename,)).fetchone()["id"]
     cur.execute("DELETE FROM items WHERE receipt_id=?", (rid,))
@@ -99,4 +119,4 @@ def import_kept_receipt(conn, kept_text: str, filename: str, t_id) -> dict:
     if t_id is not None:
         cur.execute("INSERT OR IGNORE INTO fetch_state (t_id, filename) VALUES (?, ?)", (t_id, filename))
     conn.commit()
-    return {"filename": filename, "items": len(df), "total": parsed_total, "t_id": t_id}
+    return {"filename": filename, "items": len(df), "total": parsed_total, "t_id": t_id, "mark": mark}

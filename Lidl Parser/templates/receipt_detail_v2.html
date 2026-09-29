@@ -9,6 +9,7 @@
 </form>
 <form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
 onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>Delete receipt</button></form>
+<a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
 <div class="cols">
 <div class="card"><h2>Items</h2>
 <table><tr><th>Raw</th><th>Clean</th><th>Cat</th><th>Qty</th><th>Final</th><th>Match</th></tr>

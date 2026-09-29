@@ -38,7 +38,8 @@
 <button>Apply</button>
 {% endif %}
 </form>
-<canvas id="cats"></canvas></div>
+<canvas id="cats"></canvas>
+<div id="pie-total">{{ "%.2f"|format(pie_total or 0) }} €</div></div>
 </div>
 <div class="grid">
 <div><h2>Recent receipts</h2>
@@ -67,7 +68,11 @@ new Chart(document.getElementById('monthly'), {type:'bar',
   data:{labels:monthly, datasets:[{data:mvals}]}, options:{plugins:{legend:{display:false}}}});
 const cats = {{ by_cat|map(attribute='c')|list|tojson }};
 const cvals = {{ by_cat|map(attribute='total')|list|tojson }};
+const pieTotal = {{ (pie_total or 0)|tojson }};
+const centerText = {id:'centerText', afterDraw(c){ const a=c.chartArea, x=(a.left+a.right)/2, y=(a.top+a.bottom)/2;
+  const g=c.ctx; g.save(); g.textAlign='center'; g.textBaseline='middle';
+  g.font='bold 16px sans-serif'; g.fillText(Number(pieTotal).toFixed(2)+' €', x, y); g.restore(); }};
 new Chart(document.getElementById('cats'), {type:'doughnut',
-  data:{labels:cats, datasets:[{data:cvals}]}});
+  data:{labels:cats, datasets:[{data:cvals}]}, plugins:[centerText]});
 </script>
 {% endblock %}

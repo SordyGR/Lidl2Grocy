@@ -5,7 +5,7 @@ import unicodedata
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "data", "lidl.db")
+DB_PATH = os.environ.get("LIDL_DB") or os.path.join(BASE_DIR, "data", "lidl.db")
 
 UNIT_SEED = ["Τεμάχιο", "Κιλό", "Γραμμάριο", "Λίτρο", "ml", "Πακέτο", "Κουτί", "Φιάλη"]
 
@@ -168,6 +168,9 @@ def init_db():
     receipts_have = [r[1] for r in conn.execute("PRAGMA table_info(receipts)").fetchall()]
     if "card_last4" not in receipts_have:
         conn.execute("ALTER TABLE receipts ADD COLUMN card_last4 TEXT")
+    if "mark" not in receipts_have:
+        conn.execute("ALTER TABLE receipts ADD COLUMN mark TEXT")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_receipts_mark ON receipts(mark)")
     for seed in UNIT_SEED:
         conn.execute("INSERT OR IGNORE INTO units (name, source) VALUES (?, 'local')", (seed,))
     # Backfill stub products for item raws that predate stub creation

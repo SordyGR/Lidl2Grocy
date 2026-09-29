@@ -6,9 +6,10 @@ def test_paste_cli(tmp_path):
     assert os.path.exists(src), "fixture missing"
     base = os.path.join(os.path.dirname(__file__), "..")
     name = ""
+    env = dict(os.environ, LIDL_DB=str(tmp_path / "cli.db"))
     try:
         r = subprocess.run([sys.executable, "fetch_lidl.py", "--paste", src, "--tid", "CLITEST"],
-                           cwd=base,
+                           cwd=base, env=env,
                            capture_output=True, text=True, timeout=120)
         assert "saved 26-09-22" in r.stdout, r.stdout + r.stderr
         # Parse the created filename from stdout — never hardcode or glob it.
@@ -22,7 +23,7 @@ def test_paste_cli(tmp_path):
             fpath = os.path.join(base, "receipts", name)
             if os.path.exists(fpath):
                 os.remove(fpath)
-        db_path = os.path.join(base, "data", "lidl.db")
+        db_path = str(tmp_path / "cli.db")
         conn = sqlite3.connect(db_path)
         try:
             conn.execute("PRAGMA foreign_keys = ON")
@@ -35,7 +36,7 @@ def test_paste_cli(tmp_path):
             conn.commit()
         finally:
             conn.close()
-    conn = sqlite3.connect(os.path.join(base, "data", "lidl.db"))
+    conn = sqlite3.connect(str(tmp_path / "cli.db"))
     try:
         leftovers = conn.execute("SELECT * FROM fetch_state WHERE t_id='CLITEST'").fetchall()
     finally:

@@ -3,7 +3,13 @@
 <h1>{{ p["clean"] or p["raw"] }}</h1>
 <p>
 {% if p["grocy_id"] %}<span>Linked: Grocy #{{ p["grocy_id"] }} {{ p["grocy_name"] or "" }}</span>
-{% else %}<span class="notice-warn">Unlinked</span>{% endif %}
+{% if grocy_base %} <a href="{{ grocy_base }}/product/{{ p["grocy_id"] }}" target="_blank" rel="noopener">Open in Grocy →</a>{% endif %}
+<form method="post" action="/mappings/unlink" style="display:inline">
+<input type="hidden" name="raw" value="{{ p["raw"] }}">
+<button>Unlink</button>
+</form>
+{% else %}<span class="notice-warn">Unlinked</span>
+<a href="/mappings/new-item?raw={{ p["raw"]|urlencode }}">Create in Grocy…</a>{% endif %}
 {% if p["grocy_track"] == 0 %}<span>Skipped for push</span>{% endif %}
 {% if p["needs_review"] %}<span class="notice-err">Needs review</span>{% endif %}
 <span id="abc-badge">ABC: …</span>

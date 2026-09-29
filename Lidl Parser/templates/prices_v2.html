@@ -8,6 +8,10 @@
 <option value="quantity">Quantity</option>
 <option value="frequency">Frequency</option>
 </select>
+<select name="group" id="group">
+<option value="product">Products</option>
+<option value="category">Categories</option>
+</select>
 <label>Top <input name="top" id="top" size="3" value="5"></label>
 <button id="apply" class="btn" type="button">Apply</button>
 <div id="picker">
@@ -20,9 +24,9 @@
 <div id="chips"></div>
 <p id="rank-note" class="sub"></p>
 </form>
-<div class="card"><canvas id="trend"></canvas></div>
-<div class="cols" style="margin-top:1rem">
 <div class="card"><h2>ABC · pareto</h2><canvas id="pareto"></canvas></div>
+<div class="cols" style="margin-top:1rem">
+<div class="card"><h2>Price trend</h2><canvas id="trend"></canvas></div>
 <div class="card"><h2>Stats</h2>
 <table id="stats"><thead><tr><th>Product</th><th>Buys</th><th>Qty</th><th>Spent</th>
 <th>Min</th><th>Max</th><th>Last</th><th>ABC</th></tr></thead><tbody id="stats-body"></tbody></table>
@@ -50,8 +54,9 @@ function topN(){
   return Math.max(1, Math.min(n, 50));
 }
 async function loadRank(){
+  const grp = (document.getElementById("group")||{}).value || "product";
   const r = await fetch("/api/abc_analysis?metric="
-    + encodeURIComponent(metricEl.value) + "&top=50");
+    + encodeURIComponent(metricEl.value) + "&top=50&group=" + encodeURIComponent(grp));
   const j = await r.json();
   rankRows = j.rows;
   const note = document.getElementById("rank-note");
@@ -84,8 +89,11 @@ function togglePick(clean){
 async function render(){
   const cleans = [...new Set(selected)];
   document.getElementById("sel-count").textContent = cleans.length;
-  const hist = await (await fetch("/api/price_history_multi?"
-    + cleans.map(c=>"clean="+encodeURIComponent(c)).join("&"))).json();
+  const grp = (document.getElementById("group")||{}).value || "product";
+  const url = grp === "category"
+    ? "/api/category_history?" + cleans.map(c=>"category="+encodeURIComponent(c)).join("&")
+    : "/api/price_history_multi?" + cleans.map(c=>"clean="+encodeURIComponent(c)).join("&");
+  const hist = await (await fetch(url)).json();
   if (trendChart) trendChart.destroy();
   trendChart = new Chart(document.getElementById("trend"), {type:"line",
     data:{datasets: cleans.map((c,i)=>({label:c,
@@ -95,10 +103,10 @@ async function render(){
   if (paretoChart) paretoChart.destroy();
   const rows = rankRows.slice(0, topN());
   paretoChart = new Chart(document.getElementById("pareto"), {type:"bar",
-    data:{labels: rows.map(r=>r.clean),
-      datasets:[{label:metricEl.value, data:rows.map(r=>r.value),
+    data:{labels: rows.map(r=>"#"+r.rank+" · "+r.clean+" ("+r.class+")"),
+      datasets:[{label:metricEl.value, data:rows.map(r=>r.value), order:2,
         backgroundColor: rows.map(r=>r.class==="A"?"#59a14f":r.class==="B"?"#edc948":"#e15759")},
-        {label:"cum %", data:rows.map(r=>r.cum_pct), type:"line", yAxisID:"y1",
+        {label:"cum %", data:rows.map(r=>r.cum_pct), type:"line", yAxisID:"y1", order:1,
          borderColor:"#ffffff", borderWidth:2, pointRadius:0}]},
     options:{scales:{y1:{position:"right", min:0, max:100}}}});
   const tb = document.getElementById("stats-body");
@@ -144,6 +152,9 @@ document.getElementById("apply").onclick = async ()=>{
   await loadRank(); seedFromTop(); drawList(); render();
 };
 metricEl.onchange = async ()=>{
+  await loadRank(); seedFromTop(); drawList(); render();
+};
+(document.getElementById("group")||{}).onchange = async ()=>{
   await loadRank(); seedFromTop(); drawList(); render();
 };
 (async function boot(){ await loadRank(); seedFromTop(); drawList(); render(); })();

@@ -9,6 +9,7 @@
 </form>
 <form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
 onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>Delete receipt</button></form>
+<a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
 <table><tr><th>Raw</th><th>Clean</th><th>Cat</th><th>Qty</th><th>Unit</th><th>Disc</th><th>Final</th><th>Match</th><th>Owner</th></tr>
 {% for i in items %}<tr>
 <td>{{ i["raw"] }}</td><td>{% if i["raw"] in pids %}<a href="/products/{{ pids[i["raw"]] }}">{{ i["clean"] }}</a>{% else %}{{ i["clean"] }}{% endif %}</td><td>{{ i["category"] }}</td>

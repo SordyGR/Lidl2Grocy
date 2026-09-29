@@ -84,42 +84,16 @@
 </form>
 <td>
 {% if r["grocy_id"] %}
-<span>Grocy #{{ r["grocy_id"] }} {{ r["grocy_name"] }}</span>
+{% if grocy_base %}<a href="{{ grocy_base }}/product/{{ r["grocy_id"] }}" target="_blank" rel="noopener">Linked #{{ r["grocy_id"] }}</a>
+{% else %}<span>Linked #{{ r["grocy_id"] }}</span>{% endif %}
 {% if r["is_orphan"] %}
-<span class="notice-err" title="No longer in Grocy catalog">stale link — relink?</span>
+<span class="notice-err" title="No longer in Grocy catalog">stale</span>
 {% endif %}
-<form method="post" action="/mappings/unlink" style="display:inline">
-<input type="hidden" name="raw" value="{{ r["raw"] }}">
-<button>Unlink</button>
-</form>
 {% else %}
-<form method="post" action="/mappings/link">
-<input type="hidden" name="raw" value="{{ r["raw"] }}">
-<input type="hidden" name="_q" value="{{ q }}">
-<select name="grocy_id">
-{% for s in r["suggestions"] %}
-<option value="{{ s["grocy_id"] }}">★ #{{ s["grocy_id"] }} {{ s["grocy_name"] }} ({{ s["reason"] }} {{ s["score"] }})</option>
-{% endfor %}
-{% for g in grocy_products %}
-<option value="{{ g["id"] }}">#{{ g["id"] }} {{ g["name"] }}</option>
-{% endfor %}
-</select>
-<input name="grocy_name" placeholder="Grocy name (optional)" size="14" list="grocy-names">
-<button>Link</button>
-</form>
-{% if grocy_configured %}
-<a href="/mappings/new-item?raw={{ r["raw"]|urlencode }}">Create in Grocy…</a>
+<span class="sub">—</span>
 {% endif %}
-{% endif %}
-<form method="post" action="/mappings/track" style="display:inline">
-<input type="hidden" name="raw" value="{{ r["raw"] }}">
-<input type="hidden" name="_q" value="{{ q }}">
-{% if r["grocy_track"] == 0 %}
-<input type="hidden" name="track" value="1"><button>Track</button>
-{% else %}
-<input type="hidden" name="track" value="0"><button>Skip</button>
-{% endif %}
-</form>
+{% set rk = abc_rank.get(r["clean"]) %}
+{% if rk %}<span title="Pareto ABC"> #{{ rk["rank"] }} {{ rk["class"] }}</span>{% endif %}
 </td>
 </tr>{% endfor %}
 </table>
