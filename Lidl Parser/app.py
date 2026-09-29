@@ -930,6 +930,9 @@ def product_detail(pid):
         "SELECT r.store AS store, COUNT(*) AS n FROM items i JOIN receipts r ON r.id = i.receipt_id "
         "WHERE i.raw = ? GROUP BY r.store ORDER BY n DESC LIMIT 1", (p["raw"],)).fetchone()
     units = [dict(u) for u in conn.execute("SELECT id, grocy_id, name FROM units ORDER BY name").fetchall()]
+    cats = sorted({r[0] for r in conn.execute("SELECT category FROM products WHERE category IS NOT NULL").fetchall()} |
+                  {r[0] for r in conn.execute("SELECT name FROM categories").fetchall()} |
+                  ({p["category"]} if p.get("category") else set()))
     conn.close()
     p["usual_store"] = p.get("market") or (stores["store"] if stores else "Lidl")
     suggestions = []
@@ -941,7 +944,7 @@ def product_detail(pid):
     except Exception:
         suggestions = []
     return render_template(_tpl("product_detail.html"), p=p, receipts=receipts, units=units,
-                           suggestions=suggestions)
+                           suggestions=suggestions, cats=cats)
 
 
 def _prefill_qu(conn, raw, gid):
@@ -1536,7 +1539,10 @@ def api_price_history():
         ORDER BY d
     """, (clean,))
     legacy = query("SELECT date AS d, price AS p FROM price_history WHERE clean=? ORDER BY d", (clean,))
-    return jsonify({"live": [dict(x) for x in rows], "legacy": [dict(x) for x in legacy]})
+    live = [dict(x) for x in rows]
+    points = sorted([dict(x) for x in rows] + [dict(x) for x in legacy],
+                    key=lambda x: (x["d"] or "", x["p"] or 0))
+    return jsonify({"live": live, "legacy": [dict(x) for x in legacy], "points": points})
 
 
 @app.route("/api/price_history_multi")

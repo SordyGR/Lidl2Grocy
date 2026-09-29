@@ -14,7 +14,9 @@
 <form method="post">
 <div class="field"><label>Raw name</label><div>{{ p["raw"] }}</div></div>
 <div class="field"><label>Clean name</label><input name="clean" value="{{ p["clean"] or "" }}"></div>
-<div class="field"><label>Category</label><input name="category" value="{{ p["category"] or "" }}"></div>
+<div class="field"><label>Category</label><select name="category">
+{% for c in cats %}<option value="{{ c }}" {% if c==p["category"] %}selected{% endif %}>{{ c }}</option>{% endfor %}
+</select></div>
 <div class="field"><label>Barcode</label><input name="barcode" value="{{ p["barcode"] or "" }}"></div>
 <div class="field"><label>Brand</label><input name="brand" value="{{ p["brand"] or "" }}"></div>
 <div class="field"><label>Unit</label><select name="unit">
@@ -54,7 +56,7 @@
 (function(){
   var clean = {{ p["clean"]|tojson }};
   fetch("/api/price_history?clean=" + encodeURIComponent(clean)).then(function(r){ return r.json(); }).then(function(j){
-    var pts = (j.live || []).concat(j.legacy || []);
+    var pts = j.points || (j.live || []).concat(j.legacy || []);
     new Chart(document.getElementById("trend"), {type: "line",
       data: {labels: pts.map(function(x){ return x.d; }), datasets: [{data: pts.map(function(x){ return x.p; }), spanGaps: true, borderColor: "#59A14F"}]},
       options: {plugins: {legend: {display: false}}}});

@@ -12,7 +12,9 @@
 <table>
 <tr><th>Raw name</th><td>{{ p["raw"] }}</td></tr>
 <tr><th>Clean name</th><td><input name="clean" value="{{ p["clean"] or "" }}" size="40"></td></tr>
-<tr><th>Category</th><td><input name="category" value="{{ p["category"] or "" }}"></td></tr>
+<tr><th>Category</th><td><select name="category">
+{% for c in cats %}<option value="{{ c }}" {% if c==p["category"] %}selected{% endif %}>{{ c }}</option>{% endfor %}
+</select></td></tr>
 <tr><th>Barcode</th><td><input name="barcode" value="{{ p["barcode"] or "" }}"></td></tr>
 <tr><th>Brand</th><td><input name="brand" value="{{ p["brand"] or "" }}"></td></tr>
 <tr><th>Unit</th><td><select name="unit">
@@ -49,7 +51,7 @@
 (function(){
   var clean = {{ p["clean"]|tojson }};
   fetch("/api/price_history?clean=" + encodeURIComponent(clean)).then(function(r){ return r.json(); }).then(function(j){
-    var pts = (j.live || []).concat(j.legacy || []);
+    var pts = j.points || (j.live || []).concat(j.legacy || []);
     new Chart(document.getElementById("trend"), {type: "line",
       data: {labels: pts.map(function(x){ return x.d; }), datasets: [{data: pts.map(function(x){ return x.p; }), spanGaps: true}]},
       options: {plugins: {legend: {display: false}}}});

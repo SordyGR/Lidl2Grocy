@@ -90,7 +90,8 @@ async function render(){
     data:{labels: rows.map(r=>r.clean),
       datasets:[{label:metricEl.value, data:rows.map(r=>r.value),
         backgroundColor: rows.map(r=>r.class==="A"?"#59a14f":r.class==="B"?"#edc948":"#e15759")},
-        {label:"cum %", data:rows.map(r=>r.cum_pct), type:"line", yAxisID:"y1"}]},
+        {label:"cum %", data:rows.map(r=>r.cum_pct), type:"line", yAxisID:"y1",
+         borderColor:"#ffffff", borderWidth:2, pointRadius:0}]},
     options:{scales:{y1:{position:"right", min:0, max:100}}}});
   const tb = document.getElementById("stats-body");
   tb.innerHTML = "";
