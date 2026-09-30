@@ -209,11 +209,19 @@ def inject_theme():
     return {"theme": mode}
 
 
+def _safe_next(default="/"):
+    """Relative-path-only redirect target (blocks absolute-URL open redirects)."""
+    nxt = request.args.get("next") or ""
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return nxt
+    return default
+
+
 @app.route("/theme/<mode>")
 def theme_set(mode):
     if mode not in ("light", "dark", "system"):
-        return redirect(request.args.get("next") or url_for("dashboard"))
-    resp = redirect(request.args.get("next") or url_for("dashboard"))
+        return redirect(_safe_next(url_for("dashboard")))
+    resp = redirect(_safe_next(url_for("dashboard")))
     resp.set_cookie("theme", mode, max_age=31536000, samesite="Lax")
     return resp
 
@@ -230,8 +238,8 @@ def _tpl(base):
 @app.route("/ui/<v>")
 def ui_switch(v):
     if v not in ("v1", "v2"):
-        return redirect(url_for("dashboard"))
-    resp = redirect(request.args.get("next") or url_for("dashboard"))
+        return redirect(_safe_next(url_for("dashboard")))
+    resp = redirect(_safe_next(url_for("dashboard")))
     resp.set_cookie("ui", v, max_age=31536000, samesite="Lax")
     return resp
 
@@ -399,6 +407,28 @@ def receipts_rescan_cards():
     conn.commit()
     conn.close()
     flash(f"Rescanned cards: fixed {fixed} of {len(missing)}")
+    return redirect(url_for("receipts"))
+
+
+@app.route("/receipts/resync-names", methods=["POST"])
+def receipts_resync_names():
+    """One-time repair: re-apply products.clean/category onto item lines whose
+    raw was curated after import (rows that predate save-time propagation)."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE items
+        SET clean=(SELECT p.clean FROM products p WHERE p.raw=items.raw),
+            category=(SELECT p.category FROM products p WHERE p.raw=items.raw),
+            match_type='exact', match_score=100
+        WHERE EXISTS (SELECT 1 FROM products p
+                      WHERE p.raw=items.raw
+                        AND (p.clean IS NOT items.clean
+                             OR p.category IS NOT items.category))""")
+    fixed = cur.rowcount
+    conn.commit()
+    conn.close()
+    flash(f"Resynced names: fixed {fixed} line(s)")
     return redirect(url_for("receipts"))
 
 
@@ -1072,6 +1102,13 @@ def product_detail(pid):
         updates.append("updated_at = datetime('now')")
         vals.append(pid)
         conn.execute(f"UPDATE products SET {', '.join(updates)} WHERE id=?", vals)
+        # Re-resolve existing items like /mappings/update does, so receipts
+        # show the curated clean name immediately (not the stale raw value).
+        if "clean" in form or "category" in form:
+            new_clean = (form.get("clean") or "").strip() if "clean" in form else p["clean"]
+            new_cat = (form.get("category") or "").strip() if "category" in form else p["category"]
+            conn.execute("""UPDATE items SET clean=?, category=?, match_type='exact', match_score=100
+                            WHERE raw=?""", (new_clean, new_cat, p["raw"]))
         if gid_raw and not (form.get("qu_factor") or "").strip() and not (form.get("purchase_qu_id") or "").strip():
             _prefill_qu(conn, p["raw"], gid)
         conn.commit()
@@ -1293,7 +1330,8 @@ def _json_wants_json():
 
 def _split_context(conn, r, items):
     """Users list, per-item splits dict, paid-with label; first-view equal-share seeding."""
-    users = [dict(u) for u in conn.execute("SELECT id, name FROM users ORDER BY name").fetchall()]
+    users = [dict(u) for u in conn.execute(
+        "SELECT id, name FROM users WHERE COALESCE(active,1)=1 ORDER BY name").fetchall()]
     # First-view seeding writes equal shares — but not while rendering a
     # just-failed POST (pending flashes): a rejected split must leave the row
     # unchanged, so don't auto-create rows on that render.
@@ -1337,7 +1375,34 @@ def receipt_splits(rid):
     if not ok:
         conn.close()
         return redirect(url_for("receipt_detail", rid=rid))
-    if "user_id" in request.form and request.form.get("user_id"):
+    named, bad = [], False
+    for k, v in request.form.items():
+        if not k.startswith("share_"):
+            continue
+        try:
+            uid = int(k.split("_", 1)[1])
+        except ValueError:
+            continue
+        v = (v or "").strip()
+        if not v:
+            continue
+        try:
+            s = float(v.replace(",", "."))
+        except ValueError:
+            bad = True
+            continue
+        named.append((uid, s))
+    if named or bad:
+        if named and not bad and all(s > 0 for _, s in named) \
+                and abs(sum(s for _, s in named) - 1.0) < 0.001:
+            conn.execute("DELETE FROM item_splits WHERE item_id=?", (item_id,))
+            for u, s in named:
+                conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
+                             (item_id, u, s))
+            conn.commit()
+        else:
+            flash("Shares must be positive and sum to 1.0 — row unchanged")
+    elif "user_id" in request.form and request.form.get("user_id"):
         try:
             uid = int(request.form["user_id"])
         except ValueError:
@@ -1815,13 +1880,17 @@ def settings():
                 flash("Grocy URL must end with /api - value not saved")
             else:
                 app_settings.set("GROCY_URL", url)
-                app_settings.set("GROCY_API_KEY", (request.form.get("GROCY_API_KEY") or "").strip())
+                key = (request.form.get("GROCY_API_KEY") or "").strip()
+                if key:
+                    app_settings.set("GROCY_API_KEY", key)
         flash("Settings saved")
         return redirect(url_for("settings"))
     vals = {k: app_settings.get(k) for k in ("GROCY_URL", "GROCY_API_KEY")}
+    vals["GROCY_API_KEY"] = ""  # never render the secret; empty submission keeps it
     vals["EXT_INGEST_TOKEN"] = _ext_token()
     conn = get_db()
-    users = [dict(r) for r in conn.execute("SELECT id, name FROM users ORDER BY name").fetchall()]
+    users = [dict(r) for r in conn.execute(
+        "SELECT id, name, COALESCE(active,1) AS active FROM users ORDER BY name").fetchall()]
     cards = [dict(r) for r in conn.execute(
         """SELECT c.last4 AS last4, c.user_id AS user_id, u.name AS user_name
            FROM card_map c JOIN users u ON u.id = c.user_id ORDER BY c.last4""").fetchall()]
@@ -1912,6 +1981,64 @@ def settings_user_add():
         conn = get_db()
         conn.execute("INSERT OR IGNORE INTO users (name) VALUES (?)", (name,))
         conn.commit()
+        conn.close()
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/users/rename", methods=["POST"])
+def settings_user_rename():
+    try:
+        uid = int(request.form.get("id") or "0")
+    except ValueError:
+        uid = 0
+    name = (request.form.get("name") or "").strip()
+    if uid > 0 and name:
+        conn = get_db()
+        try:
+            conn.execute("UPDATE users SET name=? WHERE id=?", (name, uid))
+            conn.commit()
+        except Exception:
+            flash("Name already taken")
+        finally:
+            conn.close()
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/users/vacation", methods=["POST"])
+def settings_user_vacation():
+    try:
+        uid = int(request.form.get("id") or "0")
+    except ValueError:
+        uid = 0
+    active = 1 if (request.form.get("active") or "") == "1" else 0
+    if uid > 0:
+        conn = get_db()
+        if not active and conn.execute(
+                "SELECT COUNT(*) FROM users WHERE COALESCE(active,1)=1 AND id != ?",
+                (uid,)).fetchone()[0] == 0:
+            flash("Cannot hide the last active user")
+        else:
+            conn.execute("UPDATE users SET active=? WHERE id=?", (active, uid))
+            conn.commit()
+        conn.close()
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/users/delete", methods=["POST"])
+def settings_user_delete():
+    try:
+        uid = int(request.form.get("id") or "0")
+    except ValueError:
+        uid = 0
+    if uid > 0:
+        conn = get_db()
+        tied = conn.execute("SELECT COUNT(*) FROM item_splits WHERE user_id=?", (uid,)).fetchone()[0]
+        cards = conn.execute("SELECT COUNT(*) FROM card_map WHERE user_id=?", (uid,)).fetchone()[0]
+        if tied or cards:
+            flash(f"Cannot delete: user is tied to {tied} split line(s) and {cards} card(s)")
+        else:
+            conn.execute("DELETE FROM users WHERE id=?", (uid,))
+            conn.commit()
         conn.close()
     return redirect(url_for("settings"))
 

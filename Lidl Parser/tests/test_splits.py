@@ -61,3 +61,47 @@ def test_dashboard_user_totals(tmp_path, monkeypatch):
     appmod.app.testing = True
     body = appmod.app.test_client().get("/").get_data(as_text=True)
     assert "Alice" in body and "6.0" in body
+
+
+def _detail_client(tmp_path, monkeypatch, name):
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", str(tmp_path / name))
+    dbmod.init_db()
+    rid, iid = _seed(dbmod)
+    import app as appmod
+    appmod.app.testing = True
+    return appmod.app.test_client(), rid, iid
+
+
+def test_v2_detail_shows_named_split_ui(tmp_path, monkeypatch):
+    c, rid, iid = _detail_client(tmp_path, monkeypatch, "spv2.db")
+    c.set_cookie("ui", "v2")
+    try:
+        body = c.get(f"/receipts/{rid}").get_data(as_text=True)
+    finally:
+        c.delete_cookie("ui")
+    assert "Alice" in body and "Bob" in body
+    assert "share_1" in body and "share_2" in body
+    assert "uid:share" not in body
+
+
+def test_v1_detail_shows_named_split_ui(tmp_path, monkeypatch):
+    c, rid, iid = _detail_client(tmp_path, monkeypatch, "spv1.db")
+    body = c.get(f"/receipts/{rid}").get_data(as_text=True)
+    assert "Alice" in body and "Bob" in body
+    assert "share_1" in body and "share_2" in body
+    assert "uid:share" not in body
+
+
+def test_named_share_fields_split(tmp_path, monkeypatch):
+    import db as dbmod
+    c, rid, iid = _detail_client(tmp_path, monkeypatch, "spn.db")
+    c.post(f"/receipts/{rid}/splits", data={"item_id": str(iid), "user_id": "1"},
+           follow_redirects=True)
+    c.post(f"/receipts/{rid}/splits",
+           data={"item_id": str(iid), "share_1": "0.5", "share_2": "0.5"},
+           follow_redirects=True)
+    conn = dbmod.get_db()
+    rows = conn.execute("SELECT user_id, share FROM item_splits WHERE item_id=?", (iid,)).fetchall()
+    conn.close()
+    assert sorted((r["user_id"], r["share"]) for r in rows) == [(1, 0.5), (2, 0.5)]

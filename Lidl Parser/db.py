@@ -168,6 +168,9 @@ def init_db():
     receipts_have = [r[1] for r in conn.execute("PRAGMA table_info(receipts)").fetchall()]
     if "card_last4" not in receipts_have:
         conn.execute("ALTER TABLE receipts ADD COLUMN card_last4 TEXT")
+    users_have = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "active" not in users_have:
+        conn.execute("ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1")
     if "mark" not in receipts_have:
         conn.execute("ALTER TABLE receipts ADD COLUMN mark TEXT")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_receipts_mark ON receipts(mark)")

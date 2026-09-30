@@ -10,17 +10,32 @@
 <form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
 onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>Delete receipt</button></form>
 <a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
-<div class="cols">
 <div class="card"><h2>Items</h2>
-<table><tr><th>Raw</th><th>Clean</th><th>Cat</th><th>Qty</th><th>Final</th><th>Match</th></tr>
+<table><tr><th>Item</th><th>Cat</th><th>Qty</th><th>Unit</th><th>VAT</th><th>Disc</th><th>Final</th><th>Match</th><th>Owner</th></tr>
 {% for i in items %}<tr>
-<td>{{ i["raw"] }}</td><td>{% if i["raw"] in pids %}<a href="/products/{{ pids[i["raw"]] }}">{{ i["clean"] }}</a>{% else %}{{ i["clean"] }}{% endif %}</td><td>{{ i["category"] }}</td>
-<td>{{ i["qty"] }}</td><td>{{ "%.2f"|format(i["final"]) }}</td>
+<td>{% if i["raw"] in pids %}<a href="/products/{{ pids[i["raw"]] }}">{{ i["clean"] }}</a>{% else %}{{ i["clean"] }}{% endif %}<br><small class="sub">{{ i["raw"] }}</small></td><td>{{ i["category"] }}</td>
+<td>{{ i["qty"] }}</td><td>{{ "%.2f"|format(i["unit_price"]) }}</td>
+<td>{{ ("%g"|format(i["vat"])) ~ "%" if i["vat"] is not none else "–" }}</td>
+<td>{{ "%.2f"|format(i["discount"]) }}</td><td>{{ "%.2f"|format(i["final"]) }}</td>
 <td>{% if i["match_type"]=="new" %}<span class="pill pill-amber">new</span>{% else %}{{ i["match_type"] }} {{ i["match_score"]|round|int if i["match_score"] else "" }}{% endif %}</td>
+<td>{% for s in splits.get(i["id"], []) %}{{ s["user_name"] }} {{ s["share"] }}{% if not loop.last %}, {% endif %}{% endfor %}
+<details><summary>Split</summary>
+<form method="post" action="/receipts/{{ r["id"] }}/splits">
+<input type="hidden" name="item_id" value="{{ i["id"] }}">
+{% set sh = {} %}{% for s in splits.get(i["id"], []) %}{% if sh.update({s["user_id"]: s["share"]}) %}{% endif %}{% endfor %}
+{% for u in users %}<label>{{ u["name"] }} <input name="share_{{ u["id"] }}" size="4" value="{{ sh.get(u["id"], '') }}"></label>{% endfor %}
+<select name="user_id" title="Assign the whole line to one user">
+<option value="">—</option>
+{% for u in users %}<option value="{{ u["id"] }}">all → {{ u["name"] }}</option>{% endfor %}
+</select>
+<button class="btn">Save</button>
+</form>
+</details>
+</td>
 </tr>{% endfor %}
 </table>
 </div>
-<div class="card"><h2>Grocy push</h2>
+<div class="card" style="margin-top:1rem"><h2>Grocy push</h2>
 {% if push_log %}
 <p>Already pushed at {{ push_log["pushed_at"] }} — {{ push_log["pushed_count"] }} pushed, {{ push_log["skipped_count"] }} skipped.</p>
 {% endif %}
@@ -43,6 +58,5 @@ onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>D
 <button class="btn">Push to Grocy</button>
 </form>
 {% endif %}
-</div>
 </div>
 {% endblock %}

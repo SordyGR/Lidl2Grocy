@@ -18,13 +18,13 @@
   <a href="/settings">Settings</a>
   <span class="spacer"></span>
   <a href="/export.csv">Export CSV</a>
-  <a href="/ui/v1" title="Back to the current UI">v1 UI</a>
+  <a href="/ui/v1?next={{ request.path }}" title="Back to the current UI">v1 UI</a>
   {% if theme == "dark" %}
-  <a class="theme-toggle" href="{{ url_for('theme_set', mode='light') }}">☀ Light</a>
+  <a class="theme-toggle" href="{{ url_for('theme_set', mode='light', next=request.path) }}">☀ Light</a>
   {% elif theme == "light" %}
-  <a class="theme-toggle" href="{{ url_for('theme_set', mode='dark') }}">🌙 Dark</a>
+  <a class="theme-toggle" href="{{ url_for('theme_set', mode='dark', next=request.path) }}">🌙 Dark</a>
   {% else %}
-  <a class="theme-toggle" href="{{ url_for('theme_set', mode='dark') }}">🌙 Dark</a>
+  <a class="theme-toggle" href="{{ url_for('theme_set', mode='dark', next=request.path) }}">🌙 Dark</a>
   {% endif %}
 </nav>
 <main>

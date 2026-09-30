@@ -4,13 +4,21 @@ Grocery receipt tracker: pulls digital receipts from Lidl Hellas, parses and
 maps products, links them to [Grocy](https://grocy.info), compares prices with
 ABC analysis, and splits spending between users.
 
+**Current version: 0.9.0** (see [Versioning](#versioning)). Full wiki:
+[`docs/wiki/Home.md`](docs/wiki/Home.md) — including the
+[SWOT analysis](docs/wiki/SWOT.md) and [roadmap](docs/wiki/Roadmap.md).
+
+> **Extension status:** the Firefox extension is still **in development** and
+> **not listed on the Firefox Add-ons store**. Install it as a temporary
+> sideload — [walkthrough below](#firefox-extension-dev-status--install).
+
 ```
-+---------------+                              +-------------------------+                                     +---------------+
-| Firefox +     |----------HTTPS :5090---------|Flask/gunicorn app :5090 |----------products/stock-API--------->| Grocy API  |
-| extension     |   Bearer token ingest API    |                         |                                     +---------------+
++---------------+                              +-------------------------+
+| Firefox +     |----------HTTPS :5090---------|Flask app :5090          |---products/stock-API---> Grocy API
+| extension     |   Bearer token ingest API    |  (SQLite, Jinja, v1+v2) |
 | (your login,  |                              |                         |
-| real session) |                              |                         |
-+-------+-------+                              +-------------------------+
+| real session) |                              +-------------------------+
++-------+-------+
         | purchase history + receipt details
         v
 +---------------+
@@ -18,9 +26,31 @@ ABC analysis, and splits spending between users.
 +---------------+
 ```
 
-## Setup (Docker, Debian server — recommended)
+## Features
 
-Prereqs on the server: Docker Engine + Compose plugin, nothing else.
+- **Receipt ingest** — Firefox extension sync (incremental + full history scan)
+  into a token-gated API; paste-box and `.txt` upload fallbacks; local
+  headless-Chromium CLI (`fetch_lidl.py`). Dedupe by Lidl transaction id **and**
+  the fiscal **MAPK** receipt id, so re-syncs never duplicate.
+- **Receipts** — line detail (clean name, category, qty, unit price, VAT %,
+  discount, final), card last-4 detection, `.txt` download, rescan/repair
+  actions (cards, names), per-user splits (equal default, exact per-line
+  override), manual Grocy push with preview — **nothing auto-pushes**.
+- **Products (raw → clean)** — curated catalog with Grocy linking (fuzzy +
+  barcode suggestions), duplicate detection/merge, ERP-style Grocy item
+  creation, xlsx export/import with conflict review, category merge review.
+- **Prices & ABC** — product *and* category Pareto with ABC classes, rank
+  badges, cumulative line, price trends, `analysis.xlsx` export.
+- **Dashboard** — KPIs, monthly spend, category doughnut with range total,
+  top products, per-user totals, chart category exclusions.
+- **Settings** — hidden API key, expandable sections, user rename/vacation/
+  guarded delete, card reassignment, cached Units/Categories with Grocy
+  refresh, DB backup. Two skins (v1 default, v2 via `/ui/v2`) ×
+  light/dark/system theme.
+
+## Setup (Docker — recommended)
+
+Prereqs: Docker Engine + Compose plugin, nothing else.
 
 ```bash
 git clone https://github.com/SordyGR/Lidl2Grocy.git
@@ -52,192 +82,80 @@ python migrate.py   # one-time import (safe to re-run)
 python app.py       # -> http://127.0.0.1:5000
 ```
 
+Isolated DB for experiments: `LIDL_DB=/tmp/x.db python fetch_lidl.py …`.
+Tests: `cd "Lidl Parser" && python -m pytest -q` (185 passed).
+
 ## First run checklist
 
-1. **Settings** page: enter Grocy URL + API key. "Test" link verifies it.
-   Copy the **Extension token** (Settings → Extension) for step 3. Settings
-   saved in-UI override `.env` values at runtime; `SECRET_KEY` stays
-   env-only.
-2. **Users + cards**: add the people you track (e.g. household members), then
-   map each card's **last 4 digits** to its owner. Only last-4 digits are ever
-   stored — never full card numbers.
-3. **Firefox extension** (`Lidl Parser/extension/`, see walkthrough below):
-   sideload it, log into lidl-hellas.gr in Firefox, paste the server URL +
-   token, Sync. New receipts land as reviewable imports.
-4. **Mappings**: link each raw receipt product to a Grocy product (suggestions
-   included), or create a full Grocy item via the ERP-style new-item page.
+1. **Settings**: enter Grocy URL + API key ("Test" verifies it). Copy the
+   **Extension token** for step 3. In-UI values override `.env` at runtime;
+   `SECRET_KEY` stays env-only.
+2. **Users + cards**: add household members, map each card's **last 4 digits**
+   to its owner. Only last-4 digits are ever stored.
+3. **Firefox extension** (sideload, see below): log into lidl-hellas.gr in
+   Firefox, paste server URL + token, Sync. Imports are reviewable, never
+   automatic.
+4. **Products**: map raw names to clean names (or import a shared catalog),
+   link to Grocy products.
 5. Open a receipt, check splits, **Push to Grocy**.
 
-## Extension install & testing walkthrough
+## Firefox extension (dev status + install)
 
-You need: the server running (Docker or local dev, either is fine) and
-Firefox on any machine that can reach it (LAN, VPN, or remote URL).
+⚠️ **In development — not on the Firefox Add-ons store.** It runs as a
+Manifest V2 temporary add-on: it unloads when Firefox closes, so repeat the
+load step after a restart. Store listing (signing, AMO review) is tracked on
+the [roadmap](docs/wiki/Roadmap.md).
 
-**Install (once):**
-1. Check out this branch: `git clone https://github.com/SordyGR/Lidl2Grocy.git`
-   then `cd Lidl2Grocy` and `git checkout Gamma` (until Gamma merges, the
-   extension only exists here).
-2. In Firefox open `about:debugging` → This Firefox → Load Temporary Add-on
-   → pick `Lidl Parser/extension/manifest.json`. (Temporary sideloads unload
-   when Firefox closes — repeat this step after a restart.)
+**Install (once per Firefox session):**
+1. `git clone https://github.com/SordyGR/Lidl2Grocy.git && cd Lidl2Grocy`
+2. Firefox → open `about:debugging` → **This Firefox** → **Load Temporary
+   Add-on…** → pick `Lidl Parser/extension/manifest.json`.
 3. Log into lidl-hellas.gr once, in the same Firefox (normal browsing).
-4. Open the extension popup: Server URL = your server
-   (`http://<server-ip>:5090` on LAN; `https://…` remote), Token = dashboard
-   Settings → Extension → Copy. Page cap: default 5 is daily-use; raise it
-   for catch-ups.
+4. Extension popup: Server URL (`http://<server-ip>:5090` on LAN, `https://…`
+   remote), Token = Settings → Extension → Copy. Page cap default 5 for daily
+   use; raise for catch-ups.
 
-**Sync:**
-- **Sync** = incremental catch-up (stops at the first page with nothing new,
-  or the page cap).
-- **Full history scan** (checkbox) = first run against an old account: walks
-  every history page (sequential requests, 1.5–3 s throttle, 100-page
-  backstop). Cancel anytime — finished receipts stay imported, the rest
-  resumes on the next Sync.
-- If a run reports failures, just Sync again later; failed receipts retry
-  automatically. Nothing ever auto-pushes to Grocy — review first.
+**Sync modes:**
+- **Sync** = incremental catch-up (stops at first page with nothing new).
+- **Full history scan** = first run against an old account: sequential
+  requests, 1.5–3 s throttle, 100-page backstop, Cancel anytime, resume on
+  next Sync.
+- Failures retry on the next Sync and never duplicate (tid + MAPK dedupe).
 
-**Verify the server API by hand (optional):**
+HTTPS with a self-signed cert needs a one-time browser exception in Firefox.
 
-```bash
-curl -s http://<server-ip>:5090/api/ext/status                 # → 401 {"error": ...}
-curl -s -H "Authorization: Bearer <token>" http://<server-ip>:5090/api/ext/status
-# → {"last_sync": ..., "ok": true, "receipts": N}
-```
+## Versioning
 
-**Run the automated suite:**
+[SemVer](https://semver.org/) `MAJOR.MINOR.PATCH`. The root `VERSION` file is
+the source of truth; releases are tags `vX.Y.Z` on `main`.
 
-```bash
-cd "Lidl Parser"
-python -m pytest -q        # 120 passed expected on Gamma
-```
+| Bump | When |
+|------|------|
+| MAJOR | Breaking change (DB rebuild required, API/route removal) |
+| MINOR | New feature (page, endpoint, extension capability) |
+| PATCH | Bug fix, no behavior contract change |
 
-Manual fallback never goes away: dashboard paste form, or
-`python fetch_lidl.py --paste pasted.txt --tid 14000...`.
-
-**Local headless sync (no extension, no Docker):** for local runs the CLI
-keeps its Chromium path. One-time setup (NOT in requirements.txt, so the
-Docker image stays slim):
-
-```bash
-pip install playwright && playwright install chromium
-python fetch_lidl.py --latest-only   # daily use (headless)
-python fetch_lidl.py --max 5         # cap history pages
-python fetch_lidl.py --headed        # opens a browser once; log in, rerun
-```
-
-Credentials come from Settings/`LIDL_USER` + encrypted `LIDL_PASS` (or
-`.env`); the signed-in session persists in `data/.lidl-profile/`
-(gitignored). Note Lidl sometimes refuses automated sign-in ("system
-overload") — wait ~30 min and try once, or use the extension instead.
-
-## Usage wiki
-
-### Dashboard
-KPIs (receipts, items, spend, unmapped), monthly spend, spend by category,
-recent receipts, top products, per-user spend totals. Receipts arrive via
-the Firefox extension (or the paste-box fallback below the KPIs).
-
-### Receipts & splits
-Each receipt shows its lines plus a **Paid with** line (`****1236 → owner`
-from your card mapping, or `Cash`). The Owner column assigns each line
-wholly to one user or splits it proportionally (`1:0.6,2:0.4` shares must
-sum to 1.0). Unvisited receipts default to equal shares across all users.
-Splits drive the dashboard per-user totals; the Grocy push always sends full
-stock amounts (Grocy has no user concept).
-
-### Mappings (raw → clean) & ERP item creation
-Search/filter the raw→clean product map (unmapped, linked/unlinked,
-tracked/skipped), edit names/categories/barcodes inline or in bulk. Linking
-attaches a local product to an existing Grocy product. **New-item page**
-(`/mappings/new-item`) is the ERP-style flow: identity (name/brand/barcode/
-description), storage (location, min stock), units (purchase/stock +
-conversion factor), classification (product group, parent product) — creates
-in Grocy, attaches the barcode, and links locally in one submit. The category
-inputs suggest cached Grocy categories; the group dropdown falls back to the
-cache when Grocy is unreachable.
-
-### Sharing, backup & categories
-- **Products → Export** downloads your curated catalog (clean names,
-  categories, barcodes…) as xlsx; a friend imports it via
-  **Products → Import**. New products auto-add; differing rows land on a
-  conflict review page (keep local / keep new / keep both — both renames to
-  `<raw> [from <file>]`); same-barcode-different-product rows are listed as
-  warnings. Grocy links are never shared (each Grocy differs).
-- **Settings → Download full DB backup**: consistent snapshot of the whole
-  SQLite DB.
-- **Settings → Categories → Refresh from Grocy** caches Grocy's product
-  groups locally (like Units): they back the new-item dropdown offline and
-  seed the hub suggestions. **Excluded from charts** checkboxes leave
-  categories out of dashboard charts, KPIs spent, top products and ABC
-  (counts, receipts and exports stay whole).
-
-### Prices & ABC analysis
-Pick a metric (spend / quantity / frequency) and top-N: the page seeds the
-comparison from the ABC ranking, and the searchable dropdown adds more
-products (menu stays open, click toggles). Overlaid price-trend chart on top,
-Pareto bars + cumulative-% line below, stat table at the bottom. Classes:
-A ≤ 80% cumulative, B ≤ 95%, C rest. The **Download analysis.xlsx** link on
-the page exports the full lines + price trends workbook.
-
-### Settings reference
-Extension token (show/copy/regenerate — paste it into the Firefox extension),
-Grocy URL/key, users, card→user map, cached Units/Categories (each with a
-Refresh from Grocy), chart exclusions, full DB backup link. Resolution order
-per key: UI-saved value → environment → empty. Grocy URL must end with `/api`.
-
-### Receipt lifecycle
-```
-          +----------------------+
-          | Firefox extension    |
-          | Sync (your session)  |
-          +----------------------+
-                    |
-              receipt text
-                    |
-       +--------------------------+
-       |Parse items + card last-4 |
-       +--------------------------+
-                    |
-             product memory
-                    |
-         +-------------------+
-         |Match raw to Grocy |
-         +-------------------+
-          |                   |
-     if missing          linked items
-          |                   |
-          v                   v
- +----------------------+  +------------------------+
- |ERP new-item creation |--->|Assign / split per user |
- +----------------------+  +------------------------+
-                               |                   |
-                         final x share       full amounts
-                               |                   |
-                               v                   v
-                        +-------------+  +--------------------+
-                        |Prices + ABC |  |Push to Grocy stock |
-                        +-------------+  +--------------------+
-```
+Pre-1.0 (`0.x`): DB schema and ingest API may still evolve; every MINOR
+documents migrations in the release notes. `1.0.0` = extension store-listed
+(or stable sideload) + frozen ingest API + green fresh-install. The extension
+`manifest.json` version tracks app `MAJOR.MINOR`.
 
 ## Troubleshooting
-- **Extension says "Log into lidl-hellas.gr first"**: open Lidl in the same
-  Firefox and sign in, then Sync again.
-- **Extension says "Token rejected"**: re-copy it from Settings → Extension
-  (it changes on Regenerate).
-- **Extension says "Server unreachable"**: wrong URL, container down, or —
-  on HTTPS with a self-signed cert — open the server URL once in Firefox and
-  accept the exception.
-- **Sync reports failures**: Sync again later; failed receipts retry
-  automatically and never duplicate.
-- **Second receipt same day**: imports as `YY-MM-DD.N.txt`, ordered after the
-  first; re-syncs skip already-seen transaction ids.
-- **Grocy unreachable**: pages render with cached catalog + "stale" warning;
-  pushes abort safely without partial sends (force re-push may duplicate).
-- **Stale Grocy link**: mappings flag it ("stale link — relink?") when the id
-  vanished from the Grocy catalog.
+
+- **"Log into lidl-hellas.gr first"**: sign in on the site in the same
+  Firefox, Sync again.
+- **"Token rejected"**: re-copy from Settings → Extension (changes on
+  Regenerate).
+- **"Server unreachable"**: wrong URL, container down, or accept the
+  self-signed cert exception once.
+- **Failures / duplicates**: Sync again; MAPK dedupe skips seen receipts.
+  Old rows mapped before a fix: **Receipts → Resync names**.
+- **Grocy unreachable**: pages render cached + "stale" warning; pushes abort
+  safely (force re-push may duplicate).
 - **Port taken**: change `5090:5090` in `Lidl Parser/compose.yml`.
 
 ## Development
-- Tests: `cd "Lidl Parser" && python -m pytest tests/ -q`
-- Design docs live in `docs/superpowers/specs`, implementation plans in
-  `docs/superpowers/plans`; diagrams as d2 sources in `docs/diagrams`.
+
+- Tests: `cd "Lidl Parser" && python -m pytest -q`
+- Design docs: `docs/superpowers/specs`, plans: `docs/superpowers/plans`
+- Local app notes: [`Lidl Parser/README.md`](Lidl%20Parser/README.md)

@@ -6,6 +6,9 @@
 <form method="post" action="/receipts/rescan-cards" style="display:inline">
 <button title="Fill missing card digits from saved receipt texts">Rescan missing cards</button>
 </form>
+<form method="post" action="/receipts/resync-names" style="display:inline">
+<button title="Re-apply curated product names to receipt lines mapped before the fix">Resync names</button>
+</form>
 {% for r in rows %}<div class="row-card"><b>{{ r["receipt_date"] }}</b>
 <a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a>
 <span class="sub">{{ r["item_count"] }} items · {{ "%.2f"|format(r["total"]) }} €</span>

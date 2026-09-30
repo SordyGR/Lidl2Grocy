@@ -16,38 +16,46 @@
 <input type="hidden" name="form" value="grocy">
 <h2>Grocy</h2>
 <div class="field"><label>URL</label><input type="text" name="GROCY_URL" value="{{ v['GROCY_URL'] }}"></div>
-<div class="field"><label>API key</label><input type="text" name="GROCY_API_KEY" value="{{ v['GROCY_API_KEY'] }}"></div>
+<div class="field"><label>API key</label><input type="password" name="GROCY_API_KEY" value="" placeholder="unchanged" autocomplete="new-password"></div>
 <p><a href="/api/grocy_status">Test Grocy connection</a></p>
 <button class="btn" type="submit">Save</button>
 </form>
 </div>
 <div class="card">
-<h2>Excluded from charts</h2>
+<details>
+<summary><h2 style="display:inline">Excluded from charts ({{ excluded|length }}/{{ all_cats|length }})</h2></summary>
 <form method="post">
 <input type="hidden" name="form" value="excluded">
 <p class="sub">Checked categories are left out of dashboard charts, KPIs spent, top products and ABC analysis. Counts, receipts and exports stay whole.</p>
 {% for c in all_cats %}<label><input type="checkbox" name="excluded" value="{{ c }}" {% if c in excluded %}checked{% endif %}> {{ c }}</label><br>{% endfor %}
 <button class="btn" type="submit">Save</button>
 </form>
+</details>
 </div>
 <div class="card">
+<details>
+<summary><h2 style="display:inline">Units &amp; categories ({{ units|length + categories|length }})</h2></summary>
+<p class="sub">Local fallback = built-in names that work without Grocy. Grocy cache = names pulled from your Grocy via Refresh.</p>
 <h2>Units</h2>
 <form method="post" action="{{ url_for('settings_units_refresh') }}">
 <button class="btn btn-ghost">Refresh from Grocy</button>
 </form>
 <table><tr><th>Name</th><th>Grocy id</th><th>Source</th></tr>
-{% for u in units %}<tr><td>{{ u['name'] }}</td><td>{{ u['grocy_id'] or '' }}</td><td>{{ u['source'] }}</td></tr>{% endfor %}
+{% for u in units %}<tr><td>{{ u['name'] }}</td><td>{{ u['grocy_id'] or '' }}</td><td>{{ "Local fallback" if u['source']=="local" else "Grocy cache" }}</td></tr>{% endfor %}
 </table>
 <h2>Categories</h2>
 <form method="post" action="{{ url_for('settings_categories_refresh') }}">
 <button class="btn btn-ghost">Refresh from Grocy</button>
 </form>
 <table><tr><th>Name</th><th>Grocy id</th><th>Source</th></tr>
-{% for c in categories %}<tr><td>{{ c['name'] }}</td><td>{{ c['grocy_id'] or '' }}</td><td>{{ c['source'] }}</td></tr>{% endfor %}
+{% for c in categories %}<tr><td>{{ c['name'] }}</td><td>{{ c['grocy_id'] or '' }}</td><td>{{ "Local fallback" if c['source']=="local" else "Grocy cache" }}</td></tr>{% endfor %}
 </table>
 <p><a href="{{ url_for('categories_merge') }}">Merge local categories with Grocy groups</a></p>
+</details>
 </div>
 <div class="card">
+<details open>
+<summary><h2 style="display:inline">Users &amp; cards</h2></summary>
 <h2>Users</h2>
 <form method="post" action="{{ url_for('settings_user_add') }}">
 <div class="field"><label>Name</label><input type="text" name="name"></div>
@@ -55,7 +63,31 @@
 </form>
 <ul>
 {% for u in users %}
-<li>{{ u['name'] }}</li>
+<li><form method="post" action="{{ url_for('settings_user_rename') }}" style="display:inline">
+<input type="hidden" name="id" value="{{ u['id'] }}">
+<input type="text" name="name" value="{{ u['name'] }}" size="12">
+<button class="btn btn-ghost" type="submit">Rename</button>
+</form>
+{% if u['active'] %}
+<form method="post" action="{{ url_for('settings_user_vacation') }}" style="display:inline">
+<input type="hidden" name="id" value="{{ u['id'] }}">
+<input type="hidden" name="active" value="0">
+<button type="submit" title="Hide from split dropdowns, keep history">Vacation</button>
+</form>
+{% else %}
+<span class="pill pill-grey">on vacation</span>
+<form method="post" action="{{ url_for('settings_user_vacation') }}" style="display:inline">
+<input type="hidden" name="id" value="{{ u['id'] }}">
+<input type="hidden" name="active" value="1">
+<button type="submit">Back</button>
+</form>
+{% endif %}
+<form method="post" action="{{ url_for('settings_user_delete') }}" style="display:inline"
+onsubmit="return confirm('Delete user {{ u['name'] }}? Only possible when nothing is tied to them.')">
+<input type="hidden" name="id" value="{{ u['id'] }}">
+<button type="submit">Delete</button>
+</form>
+</li>
 {% endfor %}
 </ul>
 <h2>Cards</h2>
@@ -70,9 +102,18 @@
 </form>
 <ul>
 {% for c in cards %}
-<li>{{ c['last4'] }} - {{ c['user_name'] }}</li>
+<li>{{ c['last4'] }} - <form method="post" action="{{ url_for('settings_card_link') }}" style="display:inline">
+<input type="hidden" name="last4" value="{{ c['last4'] }}">
+<select name="user_id">
+{% for u in users %}
+<option value="{{ u['id'] }}" {% if u['id']==c['user_id'] %}selected{% endif %}>{{ u['name'] }}</option>
+{% endfor %}
+</select>
+<button class="btn btn-ghost" type="submit">Move</button>
+</form></li>
 {% endfor %}
 </ul>
 <p class="sub">Note: Last-4 collisions (two cards sharing digits) map to one user.</p>
+</details>
 </div>
 {% endblock %}
