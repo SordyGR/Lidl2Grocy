@@ -62,7 +62,6 @@ jobs:
           mkdir stage\"Lidl Parser"
           Copy-Item "Lidl Parser/app.py","Lidl Parser/db.py","Lidl Parser/receipt_parser.py","Lidl Parser/fetch_lib.py","Lidl Parser/fetch_lidl.py","Lidl Parser/grocy.py","Lidl Parser/migrate.py","Lidl Parser/settings_store.py","Lidl Parser/secret_store.py" stage\"Lidl Parser"
           Copy-Item -Recurse "Lidl Parser/templates","Lidl Parser/static","Lidl Parser/extension" stage\"Lidl Parser"
-          Copy-Item "Lidl Parser/product_map.csv","Lidl Parser/product_history.csv","Lidl Parser/Barcodes.xlsx" stage\"Lidl Parser"
           Copy-Item packaging/windows/Start.bat,packaging/windows/launcher.py,packaging/windows/serve.py,packaging/windows/requirements-standalone.txt,packaging/windows/README.txt stage
           $v = (Get-Content VERSION -Raw).Trim()
           Compress-Archive -Path stage\* -DestinationPath "Lidl2Grocy-$v-win64.zip"

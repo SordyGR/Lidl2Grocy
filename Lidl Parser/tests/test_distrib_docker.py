@@ -29,4 +29,6 @@ def test_release_job_content():
     assert "freeze.txt" in wf
     assert "Lidl2Grocy-" in wf and "win64.zip" in wf
     assert "contents: write" in wf  # release job must create GitHub releases
-    assert "product_map.csv" in wf  # migrate seeds must ship in the zip
+    # Personal seed CSVs are gitignored and absent from CI checkouts (migrate
+    # skips them); the zip must not reference them or Assemble fails.
+    assert "product_map.csv" not in wf
