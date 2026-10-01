@@ -1,0 +1,4 @@
+services:
+  lidl-parser:
+    build: .
+    image: ghcr.io/sordygr/lidl2grocy:dev

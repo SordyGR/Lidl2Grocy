@@ -21,10 +21,10 @@ import grocy as grocy_client
 import settings_store as app_settings
 import fetch_lidl
 
-RECEIPT_DIR = os.path.join(BASE_DIR, "receipts")
+RECEIPT_DIR = os.environ.get("RECEIPT_DIR") or os.path.join(BASE_DIR, "receipts")
 
 app = Flask(__name__)
-app.secret_key = "lidl-local-dev"
+app.secret_key = os.environ.get("SECRET_KEY") or "lidl-local-dev"
 
 
 def _ext_token():

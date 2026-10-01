@@ -48,18 +48,25 @@ ABC analysis, and splits spending between users.
   refresh, DB backup. Two skins (v1 default, v2 via `/ui/v2`) ×
   light/dark/system theme.
 
-## Setup (Docker — recommended)
+## Setup (Docker — prebuilt image, no build needed)
 
 Prereqs: Docker Engine + Compose plugin, nothing else.
 
 ```bash
-git clone https://github.com/SordyGR/Lidl2Grocy.git
-cd Lidl2Grocy/"Lidl Parser"
+mkdir lidl2grocy && cd lidl2grocy
+curl -O https://raw.githubusercontent.com/SordyGR/Lidl2Grocy/main/Lidl%20Parser/compose.yml
+curl -O https://raw.githubusercontent.com/SordyGR/Lidl2Grocy/main/Lidl%20Parser/.env.example
 cp .env.example .env   # then fill in values (see below)
-docker compose up -d --build
+docker compose up -d
 ```
 
-Open `http://<server-ip>:5090`.
+Open `http://<server-ip>:5090`. Pin a version with `TAG=v0.9.0 docker compose
+up -d` (defaults to `latest`).
+
+Developers (local build): check out the repo and run
+`docker compose -f compose.yml -f compose.dev.yml up -d --build`
+from `Lidl Parser/`. First publish needs repo Settings → Actions →
+General → Workflow permissions → **Read and write**.
 
 `.env` values:
 

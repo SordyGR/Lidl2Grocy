@@ -1,6 +1,6 @@
 services:
   lidl-parser:
-    build: .
+    image: ghcr.io/sordygr/lidl2grocy:${TAG:-latest}
     ports: ["5090:5090"]
     env_file: [.env]
     volumes: ["./data:/app/data", "./receipts:/app/receipts"]

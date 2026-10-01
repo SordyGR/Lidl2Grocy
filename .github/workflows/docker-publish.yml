@@ -1,0 +1,73 @@
+name: publish
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  packages: write
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches VERSION
+        run: test "v$(cat VERSION)" = "${GITHUB_REF_NAME}"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./Lidl Parser
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/sordygr/lidl2grocy:${{ github.ref_name }}
+            ghcr.io/sordygr/lidl2grocy:latest
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      PYTHON_VERSION: "3.13.7"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches VERSION
+        shell: pwsh
+        run: |
+          $v = (Get-Content VERSION -Raw).Trim()
+          if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "tag $env:GITHUB_REF_NAME != v$v" }
+      - name: Download embeddable Python
+        shell: pwsh
+        run: |
+          $url = "https://www.python.org/ftp/python/$env:PYTHON_VERSION/python-$env:PYTHON_VERSION-embed-amd64.zip"
+          curl.exe -L -o pyembed.zip $url
+          mkdir stage\python
+          Expand-Archive pyembed.zip stage\python
+          "import site" | Out-File -Append stage\python\python313._pth
+      - name: Install get-pip and wheels
+        shell: pwsh
+        run: |
+          curl.exe -L -o get-pip.py https://bootstrap.pypa.io/get-pip.py
+          .\stage\python\python.exe get-pip.py
+          .\stage\python\python.exe -m pip install -r packaging/windows/requirements-standalone.txt
+          .\stage\python\python.exe -m pip freeze | Out-File -Encoding utf8 stage\freeze.txt
+      - name: Assemble zip
+        shell: pwsh
+        run: |
+          mkdir stage\"Lidl Parser"
+          Copy-Item "Lidl Parser/app.py","Lidl Parser/db.py","Lidl Parser/receipt_parser.py","Lidl Parser/fetch_lib.py","Lidl Parser/fetch_lidl.py","Lidl Parser/grocy.py","Lidl Parser/migrate.py","Lidl Parser/settings_store.py","Lidl Parser/secret_store.py" stage\"Lidl Parser"
+          Copy-Item -Recurse "Lidl Parser/templates","Lidl Parser/static","Lidl Parser/extension" stage\"Lidl Parser"
+          Copy-Item "Lidl Parser/product_map.csv","Lidl Parser/product_history.csv","Lidl Parser/Barcodes.xlsx" stage\"Lidl Parser"
+          Copy-Item packaging/windows/Start.bat,packaging/windows/launcher.py,packaging/windows/serve.py,packaging/windows/requirements-standalone.txt,packaging/windows/README.txt stage
+          $v = (Get-Content VERSION -Raw).Trim()
+          Compress-Archive -Path stage\* -DestinationPath "Lidl2Grocy-$v-win64.zip"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Lidl2Grocy-*-win64.zip
+            stage/freeze.txt
