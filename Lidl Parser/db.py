@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     item_count INTEGER DEFAULT 0,
     total REAL DEFAULT 0,
     card_last4 TEXT,
+    settled INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS items (
@@ -173,6 +174,8 @@ def init_db():
         conn.execute("ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1")
     if "mark" not in receipts_have:
         conn.execute("ALTER TABLE receipts ADD COLUMN mark TEXT")
+    if "settled" not in receipts_have:
+        conn.execute("ALTER TABLE receipts ADD COLUMN settled INTEGER DEFAULT 0")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_receipts_mark ON receipts(mark)")
     for seed in UNIT_SEED:
         conn.execute("INSERT OR IGNORE INTO units (name, source) VALUES (?, 'local')", (seed,))

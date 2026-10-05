@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Settings</h1>
-<form method="post">
+<form method="post" id="extension">
 <h2>Extension (Firefox)</h2>
 <p><small>Receipts arrive via the Firefox extension using this token. Server-side Lidl login is removed.</small></p>
 <label>Token <input type="text" id="ext-token" readonly value="{{ v['EXT_INGEST_TOKEN'] }}" onclick="this.select()"></label>
@@ -11,14 +11,14 @@
 <p><a href="/backup-db">Download full DB backup</a></p>
 <form method="post">
 <input type="hidden" name="form" value="grocy">
-<h2>Grocy</h2>
+<h2 id="grocy">Grocy</h2>
 <label>URL <input type="text" name="GROCY_URL" value="{{ v['GROCY_URL'] }}"></label>
 <label>API key <input type="password" name="GROCY_API_KEY" value="" placeholder="unchanged" autocomplete="new-password"></label>
 <p><a href="/api/grocy_status">Test Grocy connection</a></p>
 <button type="submit">Save</button>
 </form>
 <details>
-<summary><h2 style="display:inline">Excluded from charts ({{ excluded|length }}/{{ all_cats|length }})</h2></summary>
+<summary><h2 style="display:inline" id="excluded">Excluded from charts ({{ excluded|length }}/{{ all_cats|length }})</h2></summary>
 <form method="post">
 <input type="hidden" name="form" value="excluded">
 <p><small>Checked categories are left out of dashboard charts, KPIs spent, top products and ABC analysis. Counts, receipts and exports stay whole.</small></p>
@@ -27,7 +27,7 @@
 </form>
 </details>
 <details>
-<summary><h2 style="display:inline">Units &amp; categories ({{ units|length + categories|length }})</h2></summary>
+<summary><h2 style="display:inline" id="units">Units &amp; categories ({{ units|length + categories|length }})</h2></summary>
 <p><small>Local fallback = built-in names that work without Grocy. Grocy cache = names pulled from your Grocy via Refresh.</small></p>
 <h2>Units</h2>
 <form method="post" action="{{ url_for('settings_units_refresh') }}">
@@ -46,7 +46,7 @@
 <p><a href="{{ url_for('categories_merge') }}">Merge local categories with Grocy groups</a></p>
 </details>
 <details open>
-<summary><h2 style="display:inline">Users &amp; cards</h2></summary>
+<summary><h2 style="display:inline" id="users">Users &amp; cards</h2></summary>
 <h2>Users</h2>
 <form method="post" action="{{ url_for('settings_user_add') }}">
 <label>Name <input type="text" name="name"></label>
@@ -81,7 +81,7 @@ onsubmit="return confirm('Delete user {{ u['name'] }}? Only possible when nothin
 </li>
 {% endfor %}
 </ul>
-<h2>Cards</h2>
+<h2 id="cards">Cards</h2>
 <form method="post" action="{{ url_for('settings_card_link') }}">
 <label>Last 4 <input type="text" name="last4" maxlength="4" pattern="\d{4}"></label>
 <label>User <select name="user_id">
@@ -93,14 +93,14 @@ onsubmit="return confirm('Delete user {{ u['name'] }}? Only possible when nothin
 </form>
 <ul>
 {% for c in cards %}
-<li>{{ c['last4'] }} - <form method="post" action="{{ url_for('settings_card_link') }}" style="display:inline">
+<li>{{ c['last4'] }}{% if c['uses'] %} (×{{ c['uses'] }}){% endif %} {% if not c['user_id'] %}— unassigned{% endif %} - <form method="post" action="{{ url_for('settings_card_link') }}" style="display:inline">
 <input type="hidden" name="last4" value="{{ c['last4'] }}">
 <select name="user_id">
 {% for u in users %}
 <option value="{{ u['id'] }}" {% if u['id']==c['user_id'] %}selected{% endif %}>{{ u['name'] }}</option>
 {% endfor %}
 </select>
-<button type="submit">Move</button>
+<button type="submit">{% if c['user_id'] %}Move{% else %}Link{% endif %}</button>
 </form></li>
 {% endfor %}
 </ul>

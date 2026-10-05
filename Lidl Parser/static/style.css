@@ -40,3 +40,7 @@ button{cursor:pointer}
 a{color:#2563eb}
 :root[data-theme="dark"] a{color:#7aa7ff}
 @media (prefers-color-scheme: dark){:root[data-theme="system"] a{color:#7aa7ff}}
+.row-actions{text-align:right;white-space:nowrap}
+.row-actions form{display:inline;margin-left:6px}
+.row-actions a{margin-left:6px}
+.row-actions a:first-child{margin-left:0}

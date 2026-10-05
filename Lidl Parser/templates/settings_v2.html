@@ -1,7 +1,7 @@
 {% extends "base_v2.html" %}
 {% block content %}
 <h1>Settings</h1>
-<div class="card">
+<div class="card" id="extension">
 <form method="post">
 <h2>Extension (Firefox)</h2>
 <p class="sub">Receipts arrive via the Firefox extension using this token. Server-side Lidl login is removed.</p>
@@ -11,7 +11,7 @@
 <form method="post" action="{{ url_for('settings_ext_regenerate') }}"><button class="btn btn-ghost">Regenerate token</button></form>
 <p><a href="/backup-db">Download full DB backup</a></p>
 </div>
-<div class="card">
+<div class="card" id="grocy">
 <form method="post">
 <input type="hidden" name="form" value="grocy">
 <h2>Grocy</h2>
@@ -23,7 +23,7 @@
 </div>
 <div class="card">
 <details>
-<summary><h2 style="display:inline">Excluded from charts ({{ excluded|length }}/{{ all_cats|length }})</h2></summary>
+<summary><h2 style="display:inline" id="excluded">Excluded from charts ({{ excluded|length }}/{{ all_cats|length }})</h2></summary>
 <form method="post">
 <input type="hidden" name="form" value="excluded">
 <p class="sub">Checked categories are left out of dashboard charts, KPIs spent, top products and ABC analysis. Counts, receipts and exports stay whole.</p>
@@ -34,7 +34,7 @@
 </div>
 <div class="card">
 <details>
-<summary><h2 style="display:inline">Units &amp; categories ({{ units|length + categories|length }})</h2></summary>
+<summary><h2 style="display:inline" id="units">Units &amp; categories ({{ units|length + categories|length }})</h2></summary>
 <p class="sub">Local fallback = built-in names that work without Grocy. Grocy cache = names pulled from your Grocy via Refresh.</p>
 <h2>Units</h2>
 <form method="post" action="{{ url_for('settings_units_refresh') }}">
@@ -55,7 +55,7 @@
 </div>
 <div class="card">
 <details open>
-<summary><h2 style="display:inline">Users &amp; cards</h2></summary>
+<summary><h2 style="display:inline" id="users">Users &amp; cards</h2></summary>
 <h2>Users</h2>
 <form method="post" action="{{ url_for('settings_user_add') }}">
 <div class="field"><label>Name</label><input type="text" name="name"></div>
@@ -90,7 +90,7 @@ onsubmit="return confirm('Delete user {{ u['name'] }}? Only possible when nothin
 </li>
 {% endfor %}
 </ul>
-<h2>Cards</h2>
+<h2 id="cards">Cards</h2>
 <form method="post" action="{{ url_for('settings_card_link') }}">
 <div class="field"><label>Last 4</label><input type="text" name="last4" maxlength="4" pattern="\d{4}"></div>
 <div class="field"><label>User</label><select name="user_id">
@@ -102,14 +102,14 @@ onsubmit="return confirm('Delete user {{ u['name'] }}? Only possible when nothin
 </form>
 <ul>
 {% for c in cards %}
-<li>{{ c['last4'] }} - <form method="post" action="{{ url_for('settings_card_link') }}" style="display:inline">
+<li>{{ c['last4'] }}{% if c['uses'] %} (×{{ c['uses'] }}){% endif %} {% if not c['user_id'] %}— unassigned{% endif %} - <form method="post" action="{{ url_for('settings_card_link') }}" style="display:inline">
 <input type="hidden" name="last4" value="{{ c['last4'] }}">
 <select name="user_id">
 {% for u in users %}
 <option value="{{ u['id'] }}" {% if u['id']==c['user_id'] %}selected{% endif %}>{{ u['name'] }}</option>
 {% endfor %}
 </select>
-<button class="btn btn-ghost" type="submit">Move</button>
+<button class="btn btn-ghost" type="submit">{% if c['user_id'] %}Move{% else %}Link{% endif %}</button>
 </form></li>
 {% endfor %}
 </ul>

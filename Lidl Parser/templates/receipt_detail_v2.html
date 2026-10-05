@@ -2,7 +2,7 @@
 {% block content %}
 <p><a href="/receipts">← Receipts</a></p>
 <h1>{{ r["filename"] }} <small class="sub">{{ r["receipt_date"] }}</small></h1>
-<p class="sub">{{ r["item_count"] }} items — {{ "%.2f"|format(r["total"]) }} € · Paid with {{ paid_with }}</p>
+<p class="sub">{{ r["item_count"] }} items — {{ "%.2f"|format(r["total"]) }} € · {% if r["settled"] %}Settled{% else %}Unsettled{% endif %} · Paid with {{ paid_with }}</p>
 <form method="post" action="/receipts/{{ r["id"] }}/card" style="display:inline">
 <input name="last4" size="4" maxlength="4" placeholder="card" value="{{ r["card_last4"] or "" }}">
 <button title="4 digits, or empty for cash">Set card</button>
@@ -12,7 +12,7 @@ onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>D
 <a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
 <div class="card"><h2>Items</h2>
 <table><tr><th>Item</th><th>Cat</th><th>Qty</th><th>Unit</th><th>VAT</th><th>Disc</th><th>Final</th><th>Match</th><th>Owner</th></tr>
-{% for i in items %}<tr>
+{% for i in items %}<tr id="item-{{ i["id"] }}">
 <td>{% if i["raw"] in pids %}<a href="/products/{{ pids[i["raw"]] }}">{{ i["clean"] }}</a>{% else %}{{ i["clean"] }}{% endif %}<br><small class="sub">{{ i["raw"] }}</small></td><td>{{ i["category"] }}</td>
 <td>{{ i["qty"] }}</td><td>{{ "%.2f"|format(i["unit_price"]) }}</td>
 <td>{{ ("%g"|format(i["vat"])) ~ "%" if i["vat"] is not none else "–" }}</td>
@@ -23,7 +23,13 @@ onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>D
 <form method="post" action="/receipts/{{ r["id"] }}/splits">
 <input type="hidden" name="item_id" value="{{ i["id"] }}">
 {% set sh = {} %}{% for s in splits.get(i["id"], []) %}{% if sh.update({s["user_id"]: s["share"]}) %}{% endif %}{% endfor %}
-{% for u in users %}<label>{{ u["name"] }} <input name="share_{{ u["id"] }}" size="4" value="{{ sh.get(u["id"], '') }}"></label>{% endfor %}
+{% for u in users %}<label>{{ u["name"] }} <input id="sh_{{ i["id"] }}_{{ u["id"] }}" name="share_{{ u["id"] }}" size="4" value="{{ sh.get(u["id"], '') }}"></label>{% endfor %}
+{% if users|length == 2 %}
+{% set pct = (((sh.get(users[0]["id"], 0.5)) * 100) // 10 * 10) | int %}
+<br><label><span id="shlbl_{{ i["id"] }}">{{ users[0]["name"] }} {{ pct }}% · {{ users[1]["name"] }} {{ 100 - pct }}%</span><br>
+<input type="range" min="0" max="100" step="10" value="{{ pct }}"
+oninput="var v=Math.round(this.value),a=v/100,b=(100-v)/100;document.getElementById('sh_{{ i["id"] }}_{{ users[0]["id"] }}').value=a;document.getElementById('sh_{{ i["id"] }}_{{ users[1]["id"] }}').value=b;document.getElementById('shlbl_{{ i["id"] }}').textContent='{{ users[0]["name"] }} '+v+'% · {{ users[1]["name"] }} '+(100-v)+'%'"></label>
+{% endif %}
 <select name="user_id" title="Assign the whole line to one user">
 <option value="">—</option>
 {% for u in users %}<option value="{{ u["id"] }}">all → {{ u["name"] }}</option>{% endfor %}

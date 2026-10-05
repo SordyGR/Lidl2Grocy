@@ -61,6 +61,24 @@
 <td>{{ u["total"] }}</td></tr>{% endfor %}
 </table></div>
 {% endif %}
+{% if balances %}
+<div id="balances"><h2>Balances (unsettled only)</h2>
+<table><tr><th>User</th><th>Paid</th><th>Owes share</th><th>Net</th></tr>
+{% for b in balances %}<tr><td>{{ b["name"] }}</td>
+<td>{{ "%.2f"|format(b["paid"]) }}</td><td>{{ "%.2f"|format(b["owed"]) }}</td>
+<td>{{ "%.2f"|format(b["net"]) }}</td></tr>{% endfor %}
+</table>
+{% if owes_line %}<p>{{ owes_line }}</p>{% endif %}
+<form method="post" action="/receipts/settle">
+<label>From <input type="date" name="from"></label>
+<label>To <input type="date" name="to"></label>
+{% for r in unsettled %}
+<label><input type="checkbox" name="receipt_ids" value="{{ r["id"] }}" checked>
+{{ r["receipt_date"] }} {{ r["filename"] }} ({{ "%.2f"|format(r["total"]) }} €)</label>
+{% endfor %}
+<button>Settle checked (leave complex ones unticked for later)</button>
+</form></div>
+{% endif %}
 <script>
 const monthly = {{ monthly|map(attribute='m')|list|tojson }};
 const mvals = {{ monthly|map(attribute='total')|list|tojson }};

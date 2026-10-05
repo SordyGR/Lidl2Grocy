@@ -23,6 +23,12 @@ $("sync").addEventListener("click", async () => {
   await browser.runtime.sendMessage({type: "sync", fullScan: $("fullScan").checked});
 });
 
+$("sendActive").addEventListener("click", async () => {
+  await save();
+  $("status").textContent = "Reading the open receipt…";
+  await browser.runtime.sendMessage({type: "sendActive"});
+});
+
 $("cancel").addEventListener("click", async () => {
   await browser.runtime.sendMessage({type: "cancel"});
 });
@@ -34,4 +40,12 @@ browser.runtime.onMessage.addListener((m) => {
   }
 });
 
-load();
+async function toggleSend() {
+  try {
+    const tabs = await browser.tabs.query({active: true, currentWindow: true});
+    const url = (tabs[0] && tabs[0].url) || "";
+    $("sendActive").disabled = !/[?&]t=[\w-]+/.test(url || "");
+  } catch (_) {}
+}
+
+load().then(toggleSend);

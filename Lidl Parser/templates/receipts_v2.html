@@ -9,12 +9,17 @@
 <form method="post" action="/receipts/resync-names" style="display:inline">
 <button title="Re-apply curated product names to receipt lines mapped before the fix">Resync names</button>
 </form>
-{% for r in rows %}<div class="row-card"><b>{{ r["receipt_date"] }}</b>
+{% for r in rows %}<div class="row-card" id="r-{{ r["id"] }}"><b>{{ r["receipt_date"] }}</b>
 <a href="/receipts/{{ r["id"] }}">{{ r["filename"] }}</a>
-<span class="sub">{{ r["item_count"] }} items · {{ "%.2f"|format(r["total"]) }} €</span>
-<a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
-<form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
+<span class="sub">{{ r["item_count"] }} items · {{ "%.2f"|format(r["total"]) }} € · {% if r["settled"] %}Settled{% else %}Unsettled{% endif %}</span>
+<span class="row-actions">
+<a class="btn btn-ghost" href="/receipts/{{ r["id"] }}/download">Download .txt</a>
+<form method="post" action="/receipts/{{ r["id"] }}/settled">
+<input type="hidden" name="settled" value="{% if r["settled"] %}0{% else %}1{% endif %}">
+<button class="btn btn-ghost">{% if r["settled"] %}Reopen{% else %}Settle{% endif %}</button>
+</form>
+<form method="post" action="/receipts/{{ r["id"] }}/delete"
       onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')">
-<button>Delete</button>
-</form></div>{% endfor %}
+<button class="btn btn-ghost">Delete</button>
+</form></span></div>{% endfor %}
 {% endblock %}

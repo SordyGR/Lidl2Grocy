@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Lidl2Grocy Sync",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Sync Lidl Hellas digital receipts to the Lidl2Grocy server.",
   "permissions": ["storage", "tabs", "*://*.lidl-hellas.gr/*", "http://*/*", "https://*/*"],
   "browser_action": {"default_popup": "popup.html", "default_title": "Lidl2Grocy Sync"},

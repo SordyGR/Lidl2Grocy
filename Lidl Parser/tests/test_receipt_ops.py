@@ -39,6 +39,23 @@ def test_v2_receipts_and_upload(tmp_path, monkeypatch):
     assert "v2.css" in body and 'type="file"' in body
 
 
+def test_receipts_actions_grouped_right(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch, "opsbtn.db")
+    _seed_receipt("btn.txt")
+    for cookie in (None, "v2"):
+        if cookie:
+            c.set_cookie("ui", "v2")
+        try:
+            body = c.get("/receipts").get_data(as_text=True)
+        finally:
+            if cookie:
+                c.delete_cookie("ui")
+        assert "row-actions" in body
+        assert "Settle" in body and "Delete" in body
+        if cookie:
+            assert "btn btn-ghost" in body
+
+
 def test_receipt_delete_cascades(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     rid = _seed_receipt()

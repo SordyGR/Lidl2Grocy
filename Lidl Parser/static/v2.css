@@ -70,3 +70,5 @@ body.v2 .popup { max-width: 440px; margin: 2rem auto; }
   body.v2 .grid2, body.v2 .cols { grid-template-columns: 1fr; }
   body.v2 nav { flex-wrap: wrap; height: auto; padding: .6rem 1rem; gap: .8rem; }
 }
+body.v2 .row-actions{display:block;width:100%;text-align:right;margin-top:.4rem}
+body.v2 .row-actions form{display:inline;margin-left:6px}

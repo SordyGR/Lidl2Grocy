@@ -258,6 +258,73 @@ def query(sql, args=()):
     return rows
 
 
+def _balance_context():
+    """Unsettled-only balances: paid (card owner) vs owed (split share).
+
+    Returns (balances, owes_line, unsettled_receipts). settled receipts
+    stay in counts/lists/exports — only balances reset.
+    """
+    conn = get_db()
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(receipts)").fetchall()]
+        if "settled" not in cols:
+            return [], "", []
+        users = [dict(u) for u in conn.execute(
+            "SELECT id, name FROM users WHERE COALESCE(active,1)=1 ORDER BY name").fetchall()]
+        n = len(users)
+        owed = {u["id"]: 0.0 for u in users}
+        for r in conn.execute("""
+                SELECT s.user_id AS uid, COALESCE(SUM(i.final * s.share), 0) AS t
+                FROM item_splits s
+                JOIN items i ON i.id = s.item_id
+                JOIN receipts r ON r.id = i.receipt_id
+                WHERE COALESCE(r.settled, 0) = 0
+                GROUP BY s.user_id""").fetchall():
+            if r["uid"] in owed:
+                owed[r["uid"]] += float(r["t"] or 0)
+        if n:
+            for r in conn.execute("""
+                    SELECT i.final AS f
+                    FROM items i JOIN receipts r ON r.id = i.receipt_id
+                    WHERE COALESCE(r.settled, 0) = 0
+                      AND NOT EXISTS (SELECT 1 FROM item_splits WHERE item_id = i.id)""").fetchall():
+                share = float(r["f"] or 0) / n
+                for u in users:
+                    owed[u["id"]] += share
+        paid = {u["id"]: 0.0 for u in users}
+        for r in conn.execute("""
+                SELECT rc.total AS t, c.user_id AS uid
+                FROM receipts rc LEFT JOIN card_map c ON c.last4 = rc.card_last4
+                WHERE COALESCE(rc.settled, 0) = 0""").fetchall():
+            total = float(r["t"] or 0)
+            if r["uid"] in paid:
+                paid[r["uid"]] += total
+            elif n:
+                # No linked card (cash or unmapped tail): nobody fronted it,
+                # so credit every active user equally — nets to zero.
+                for u in users:
+                    paid[u["id"]] += total / n
+        balances = [{"name": u["name"], "paid": round(paid.get(u["id"], 0), 2),
+                     "owed": round(owed.get(u["id"], 0), 2),
+                     "net": round(paid.get(u["id"], 0) - owed.get(u["id"], 0), 2)}
+                    for u in users]
+        owes_line = ""
+        nets = [(b["name"], b["net"]) for b in balances if abs(b["net"]) > 0.004]
+        if len(nets) == 2:
+            (n1, v1), (n2, v2) = nets
+            if v1 < 0 < v2:
+                owes_line = f"{n1} owes {n2} €{abs(v1):.2f}"
+            elif v2 < 0 < v1:
+                owes_line = f"{n2} owes {n1} €{abs(v2):.2f}"
+        unsettled = [dict(r) for r in conn.execute(
+            """SELECT id, filename, receipt_date, total FROM receipts
+               WHERE COALESCE(settled, 0) = 0
+               ORDER BY receipt_date, filename, id""").fetchall()]
+        return balances, owes_line, unsettled
+    finally:
+        conn.close()
+
+
 @app.route("/")
 def dashboard():
     xclause, xargs = _excluded_sql("COALESCE(category,'Misc')")
@@ -304,18 +371,25 @@ def dashboard():
         SELECT clean, COUNT(*) AS n, ROUND(SUM(final),2) AS total
         FROM items WHERE 1=1{xclause} GROUP BY clean ORDER BY total DESC LIMIT 10
     """, xargs)
+    nusers = query("SELECT COUNT(*) AS c FROM users WHERE COALESCE(active,1)=1")[0]["c"] or 1
     user_totals = query(f"""
-        SELECT u.name AS n, ROUND(SUM(i.final * s.share), 2) AS total
-        FROM item_splits s
-        JOIN items i ON i.id = s.item_id
-        JOIN users u ON u.id = s.user_id
-        WHERE 1=1{ixclause}
+        SELECT u.name AS n, ROUND(
+            COALESCE((SELECT SUM(i.final * s.share)
+                      FROM item_splits s JOIN items i ON i.id = s.item_id
+                      WHERE s.user_id = u.id{ixclause}), 0)
+            + COALESCE((SELECT SUM(i.final) / {int(nusers)}
+                        FROM items i JOIN receipts r ON r.id = i.receipt_id
+                        WHERE NOT EXISTS (SELECT 1 FROM item_splits WHERE item_id = i.id){ixclause}), 0)
+        , 2) AS total
+        FROM users u WHERE COALESCE(u.active,1) = 1
         GROUP BY u.name ORDER BY total DESC
-    """, ixargs)
+    """, (*ixargs, *ixargs))
+    balances, owes_line, unsettled = _balance_context()
     return render_template(_tpl("dashboard.html"), k=kpis, monthly=monthly,
                            by_cat=by_cat, recent=recent, top=top,
                            user_totals=user_totals, pie=pie, pie_from=frm or "", pie_to=to or "",
-                           pie_total=round(sum(float(r["total"] or 0) for r in by_cat), 2))
+                           pie_total=round(sum(float(r["total"] or 0) for r in by_cat), 2),
+                           balances=balances, owes_line=owes_line, unsettled=unsettled)
 
 
 def _pie_bounds(pie, frm, to):
@@ -444,6 +518,68 @@ def receipt_delete(rid):
     conn.close()
     flash(f"Deleted {row['filename']} and its items")
     return redirect(url_for("receipts"))
+
+
+@app.route("/receipts/settle", methods=["POST"])
+def receipts_settle():
+    """Mark receipts settled so balances restart from zero.
+
+    Explicit receipt_ids win (checkbox list — leave complex ones out);
+    otherwise a from/to date range settles every unsettled receipt inside.
+    """
+    conn = get_db()
+    ids = []
+    for v in request.form.getlist("receipt_ids"):
+        for chunk in str(v).split(","):
+            chunk = chunk.strip()
+            if chunk.isdigit():
+                ids.append(int(chunk))
+    if ids:
+        cur = conn.execute(
+            f"UPDATE receipts SET settled=1 WHERE id IN ({','.join('?' for _ in ids)})"
+            " AND COALESCE(settled,0)=0", ids)
+        n = cur.rowcount
+    else:
+        frm = (request.form.get("from") or "").strip()
+        to = (request.form.get("to") or "").strip()
+        try:
+            if frm:
+                date.fromisoformat(frm)
+            if to:
+                date.fromisoformat(to)
+        except ValueError:
+            conn.close()
+            flash("Bad date (use YYYY-MM-DD)")
+            return redirect(url_for("dashboard"))
+        if frm and to:
+            cur = conn.execute(
+                """UPDATE receipts SET settled=1
+                   WHERE COALESCE(settled,0)=0 AND receipt_date BETWEEN ? AND ?""",
+                (frm, to))
+            n = cur.rowcount
+        else:
+            conn.close()
+            flash("Pick receipts or a from/to range to settle")
+            return redirect(url_for("dashboard"))
+    conn.commit()
+    conn.close()
+    flash(f"Settled {n} receipt(s) — balances restart from here")
+    return redirect(url_for("dashboard") + "#balances")
+
+
+@app.route("/receipts/<int:rid>/settled", methods=["POST"])
+def receipt_settled(rid):
+    want = (request.form.get("settled") or "").strip()
+    conn = get_db()
+    row = conn.execute("SELECT id FROM receipts WHERE id=?", (rid,)).fetchone()
+    if not row:
+        conn.close()
+        return "Not found", 404
+    conn.execute("UPDATE receipts SET settled=? WHERE id=?",
+                 (1 if want == "1" else 0, rid))
+    conn.commit()
+    conn.close()
+    return redirect(request.form.get("next") or (url_for("receipts") + f"#r-{rid}"))
 
 
 @app.route("/receipts/<int:rid>/card", methods=["POST"])
@@ -1375,6 +1511,19 @@ def receipt_splits(rid):
     if not ok:
         conn.close()
         return redirect(url_for("receipt_detail", rid=rid))
+    # "All → user" wins over the share boxes (the page prefills them, so a
+    # whole-line pick would otherwise be silently ignored).
+    try:
+        whole = int(request.form.get("user_id") or "0")
+    except ValueError:
+        whole = 0
+    if whole > 0:
+        conn.execute("DELETE FROM item_splits WHERE item_id=?", (item_id,))
+        conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,1.0)",
+                     (item_id, whole))
+        conn.commit()
+        conn.close()
+        return redirect(url_for("receipt_detail", rid=rid) + f"#item-{item_id}")
     named, bad = [], False
     for k, v in request.form.items():
         if not k.startswith("share_"):
@@ -1393,25 +1542,19 @@ def receipt_splits(rid):
             continue
         named.append((uid, s))
     if named or bad:
-        if named and not bad and all(s > 0 for _, s in named) \
-                and abs(sum(s for _, s in named) - 1.0) < 0.001:
+        if named and not bad and all(s >= 0 for _, s in named) \
+                and abs(sum(s for _, s in named) - 1.0) < 0.001 \
+                and any(s > 0 for _, s in named):
             conn.execute("DELETE FROM item_splits WHERE item_id=?", (item_id,))
             for u, s in named:
-                conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
-                             (item_id, u, s))
+                if s > 0:
+                    conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
+                                 (item_id, u, s))
             conn.commit()
+            conn.close()
+            return redirect(url_for("receipt_detail", rid=rid) + f"#item-{item_id}")
         else:
-            flash("Shares must be positive and sum to 1.0 — row unchanged")
-    elif "user_id" in request.form and request.form.get("user_id"):
-        try:
-            uid = int(request.form["user_id"])
-        except ValueError:
-            uid = 0
-        if uid > 0:
-            conn.execute("DELETE FROM item_splits WHERE item_id=?", (item_id,))
-            conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,1.0)",
-                         (item_id, uid))
-            conn.commit()
+            flash("Shares must be non-negative and sum to 1.0 — row unchanged")
     elif request.form.get("shares"):
         parts = []
         try:
@@ -1420,14 +1563,17 @@ def receipt_splits(rid):
                 parts.append((int(u), float(s)))
         except ValueError:
             parts = []
-        if parts and abs(sum(s for _, s in parts) - 1.0) < 0.001 and all(s > 0 for _, s in parts):
+        if parts and abs(sum(s for _, s in parts) - 1.0) < 0.001 and all(s >= 0 for _, s in parts) and any(s > 0 for _, s in parts):
             conn.execute("DELETE FROM item_splits WHERE item_id=?", (item_id,))
             for u, s in parts:
-                conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
-                             (item_id, u, s))
+                if s > 0:
+                    conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
+                                 (item_id, u, s))
             conn.commit()
+            conn.close()
+            return redirect(url_for("receipt_detail", rid=rid) + f"#item-{item_id}")
         else:
-            flash("Shares must be positive and sum to 1.0 — row unchanged")
+            flash("Shares must be non-negative and sum to 1.0 — row unchanged")
     conn.close()
     return redirect(url_for("receipt_detail", rid=rid))
 
@@ -1884,7 +2030,9 @@ def settings():
                 if key:
                     app_settings.set("GROCY_API_KEY", key)
         flash("Settings saved")
-        return redirect(url_for("settings"))
+        if request.form.get("form", "grocy") == "excluded":
+            return redirect(url_for("settings") + "#excluded")
+        return redirect(url_for("settings") + "#grocy")
     vals = {k: app_settings.get(k) for k in ("GROCY_URL", "GROCY_API_KEY")}
     vals["GROCY_API_KEY"] = ""  # never render the secret; empty submission keeps it
     vals["EXT_INGEST_TOKEN"] = _ext_token()
@@ -1892,8 +2040,16 @@ def settings():
     users = [dict(r) for r in conn.execute(
         "SELECT id, name, COALESCE(active,1) AS active FROM users ORDER BY name").fetchall()]
     cards = [dict(r) for r in conn.execute(
-        """SELECT c.last4 AS last4, c.user_id AS user_id, u.name AS user_name
-           FROM card_map c JOIN users u ON u.id = c.user_id ORDER BY c.last4""").fetchall()]
+        """SELECT t.last4 AS last4, c.user_id AS user_id, u.name AS user_name,
+                  (SELECT COUNT(*) FROM receipts r
+                   WHERE r.card_last4 = t.last4) AS uses
+           FROM (SELECT last4 FROM card_map
+                 UNION
+                 SELECT DISTINCT card_last4 FROM receipts
+                 WHERE card_last4 IS NOT NULL AND card_last4 != '') t
+           LEFT JOIN card_map c ON c.last4 = t.last4
+           LEFT JOIN users u ON u.id = c.user_id
+           ORDER BY t.last4""").fetchall()]
     units = [dict(r) for r in conn.execute("SELECT id, grocy_id, name, source FROM units ORDER BY name").fetchall()]
     categories = [dict(r) for r in conn.execute("SELECT id, grocy_id, name, source FROM categories ORDER BY name").fetchall()]
     all_cats = [r[0] for r in conn.execute("SELECT DISTINCT COALESCE(category,'Misc') FROM products ORDER BY 1").fetchall()]
@@ -1910,7 +2066,7 @@ def settings_units_refresh():
         lookups = grocy_client.fetch_lookups(base_url, api_key)
     except Exception as e:
         flash(f"Grocy units unavailable, keeping cached list: {str(e)[:150]}")
-        return redirect(url_for("settings"))
+        return redirect(url_for("settings") + "#units")
     conn = get_db()
     n = 0
     for u in lookups.get("quantity_units", []):
@@ -1932,7 +2088,7 @@ def settings_units_refresh():
     conn.commit()
     conn.close()
     flash(f"Units refreshed from Grocy: {n}")
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings") + "#units")
 
 
 @app.route("/settings/categories-refresh", methods=["POST"])
@@ -1942,7 +2098,7 @@ def settings_categories_refresh():
         groups = grocy_client.fetch_product_groups(base_url, api_key)
     except Exception as e:
         flash(f"Grocy categories unavailable, keeping cached list: {str(e)[:150]}")
-        return redirect(url_for("settings"))
+        return redirect(url_for("settings") + "#units")
     conn = get_db()
     n = 0
     for g in groups:
@@ -1964,14 +2120,14 @@ def settings_categories_refresh():
     conn.commit()
     conn.close()
     flash(f"Categories refreshed from Grocy: {n}")
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings") + "#units")
 
 
 @app.route("/settings/ext-regenerate", methods=["POST"])
 def settings_ext_regenerate():
     app_settings.set("EXT_INGEST_TOKEN", secrets.token_urlsafe(32))
     flash("Extension token regenerated — update the Firefox extension")
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings") + "#extension")
 
 
 @app.route("/settings/users", methods=["POST"])
@@ -1982,7 +2138,7 @@ def settings_user_add():
         conn.execute("INSERT OR IGNORE INTO users (name) VALUES (?)", (name,))
         conn.commit()
         conn.close()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings") + "#users")
 
 
 @app.route("/settings/users/rename", methods=["POST"])
@@ -1998,10 +2154,11 @@ def settings_user_rename():
             conn.execute("UPDATE users SET name=? WHERE id=?", (name, uid))
             conn.commit()
         except Exception:
-            flash("Name already taken")
-        finally:
             conn.close()
-    return redirect(url_for("settings"))
+            flash("Name already taken")
+            return redirect(url_for("settings"))
+        conn.close()
+    return redirect(url_for("settings") + "#users")
 
 
 @app.route("/settings/users/vacation", methods=["POST"])
@@ -2017,11 +2174,13 @@ def settings_user_vacation():
                 "SELECT COUNT(*) FROM users WHERE COALESCE(active,1)=1 AND id != ?",
                 (uid,)).fetchone()[0] == 0:
             flash("Cannot hide the last active user")
+            conn.close()
+            return redirect(url_for("settings"))
         else:
             conn.execute("UPDATE users SET active=? WHERE id=?", (active, uid))
             conn.commit()
         conn.close()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings") + "#users")
 
 
 @app.route("/settings/users/delete", methods=["POST"])
@@ -2036,11 +2195,13 @@ def settings_user_delete():
         cards = conn.execute("SELECT COUNT(*) FROM card_map WHERE user_id=?", (uid,)).fetchone()[0]
         if tied or cards:
             flash(f"Cannot delete: user is tied to {tied} split line(s) and {cards} card(s)")
+            conn.close()
+            return redirect(url_for("settings"))
         else:
             conn.execute("DELETE FROM users WHERE id=?", (uid,))
             conn.commit()
         conn.close()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings") + "#users")
 
 
 @app.route("/settings/cards", methods=["POST"])
@@ -2058,7 +2219,8 @@ def settings_card_link():
         conn.close()
     else:
         flash("Card needs exactly 4 digits and a user")
-    return redirect(url_for("settings"))
+        return redirect(url_for("settings"))
+    return redirect(url_for("settings") + "#cards")
 
 
 if __name__ == "__main__":

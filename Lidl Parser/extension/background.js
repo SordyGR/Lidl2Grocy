@@ -42,6 +42,59 @@ async function postJSON(base, token, path, body) {
   return r.json();
 }
 
+// Receipt tid from an open purchase-detail URL (?t=...), or null.
+function tidFromUrl(url) {
+  const m = /[?&]t=([\w-]+)/.exec(url || "");
+  return m ? m[1] : null;
+}
+
+// Capture the receipt open in the current tab and send it to the server.
+// Reuses the sweep's diff-then-fetch chain, so reruns are duplicates, not doubles.
+async function sendActive() {
+  const s = await browser.storage.local.get({serverUrl: "", token: ""});
+  const base = (s.serverUrl || "").replace(/\/$/, "");
+  if (!base || !s.token) {
+    progress("Set the server URL and token first (token: dashboard Settings → Extension).", true);
+    return;
+  }
+  const tabs = await browser.tabs.query({active: true, currentWindow: true});
+  const tab = tabs[0];
+  const tid = tidFromUrl(tab ? tab.url : "");
+  if (!tab || !tid) {
+    progress("Open a Lidl receipt (purchase-detail page) in the current tab first, then Send again.", true);
+    return;
+  }
+  progress("Reading the open receipt…");
+  const d = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({timeout: true}), 20000);
+    function onMsg(m) {
+      if (!m || m.type !== "activeDetail") return;
+      clearTimeout(timer);
+      browser.runtime.onMessage.removeListener(onMsg);
+      resolve(m);
+    }
+    browser.runtime.onMessage.addListener(onMsg);
+    browser.tabs.sendMessage(tab.id, {type: "grab"}).catch(() => resolve({timeout: true}));
+  });
+  if (!d.text) {
+    progress("Could not read this receipt (page not ready or logged out) — reload it and retry.", true);
+    return;
+  }
+  try {
+    const need = await postJSON(base, s.token, "/api/ext/need", {tids: [tid]});
+    if (!need.new || !need.new.length) {
+      progress("Already on the server (duplicate) — nothing to do. Review on the dashboard.", true);
+      return;
+    }
+    const r = await postJSON(base, s.token, "/api/ext/receipt", {tid, text: d.text});
+    if (r.status === "duplicate") progress("Already on the server (duplicate) — nothing to do. Review on the dashboard.", true);
+    else if (r.status === "imported") progress(`Sent: ${r.items} item(s), ${r.total} €. Review on the dashboard.`, true);
+    else progress(`Server refused it (${r.error || r.status}).`, true);
+  } catch (e) {
+    progress(`Server unreachable (${e.message}). Check the URL; container running?`, true);
+  }
+}
+
 async function sweep(fullScan) {
   cancelFlag = false;
   const s = await browser.storage.local.get({serverUrl: "", token: "", pageCap: 5});
@@ -112,5 +165,6 @@ async function sweep(fullScan) {
 
 browser.runtime.onMessage.addListener((m) => {
   if (m.type === "sync") sweep(!!m.fullScan);
+  if (m.type === "sendActive") sendActive();
   if (m.type === "cancel") cancelFlag = true;
 });
