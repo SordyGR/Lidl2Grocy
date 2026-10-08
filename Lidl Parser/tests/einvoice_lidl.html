@@ -1,0 +1,404 @@
+<!DOCTYPE html><html>
+  <head>
+    <META http-equiv="Content-Type" content="text/html; charset=utf-16">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+    <style>
+					.cf th, .cf tr, .cf td{
+					border:0!important;
+					}
+
+
+					@media print {
+					.printingButton {
+					display: none;
+					}
+
+					.backgrey{
+					background-color:white
+					}
+
+					.fontSize12pt{font-size: 18px!important;}
+					.fontSize8pt{font-size: 13px!important;}
+					.fonSize10pt{font-size: 15px!important;}
+					.fontSize6pt{font-size: 12px!important;}
+					}
+
+					@media only screen and (max-width: 767px) {
+					/* Force table to not be like tables anymore */
+					#no-more-tables table,
+					#no-more-tables thead,
+					#no-more-tables tbody,
+					#no-more-tables th,
+					#no-more-tables td,
+					#no-more-tables tr {
+					display: block;
+					}
+
+
+
+					/* Hide table headers (but not display: none;, for accessibility) */
+					#no-more-tables thead tr {
+					position: absolute;
+					top: -9999px;
+					left: -9999px;
+					}
+
+
+					#no-more-tables td {
+					/* Behave like a "row" */
+					border: none;
+					
+					position: relative;
+					padding-left: 50%;
+					white-space: normal;
+					text-align:right;
+					}
+
+					#no-more-tables td:before {
+					/* Now like a table header */
+					position: absolute;
+					/* Top/left values mimic padding */
+					top: 6px;
+					left: 6px;
+					width: 45%;
+					padding-right: 10px;
+					white-space: nowrap;
+					text-align:left;
+					
+					}
+
+					/*
+					Label the data
+					*/
+					#no-more-tables td:before { content: attr(data-title); }
+					#no-more-tables tr { border-top: 1px solid #ccc!important; }
+					#no-more-tables tr.comments{ border-top: 0px!important; }
+					#no-more-tables tr.comments td:before{ content: null!important; }
+					#no-more-tables tr.comments td{padding-left: 5px!important;text-align:left;}
+					#no-more-tables table{border-bottom: 1px solid #ccc!important;}
+
+					#signclass {
+					max-width:none!important;
+					}
+					}
+
+
+
+
+
+					tr.comments td{
+					color:#999;
+					background-color:#fff!important;
+					padding-top:0px;
+					padding-bottom:7px;
+					}
+
+					.row::after {
+					content: "";
+					clear: both;
+					display: table;
+					}
+
+					.BoldBlueHeader{
+					font-weight:bold; color:#006bc2
+					}
+
+					.fontSize12pt{font-size: 16px;}
+					.fontSize8pt{font-size: 11px;}
+					.fonSize10pt{font-size: 13px;}
+					.fontSize6pt{font-size: 10px;}
+
+					.wrap {
+					white-space: normal;
+
+					word-wrap: break-word;
+					overflow-wrap: break-word;
+					}
+
+					.row-flex {
+					display: flex;
+					flex-wrap: wrap;
+					}
+
+					.watermark {
+					color: Maroon;
+					top: 20px;
+					right: 0px;
+					font-size:22px;
+					text-align:center;
+					border:2px solid Maroon;
+					font-weight:bold;
+					}
+					.watermark .sub{
+					font-size:16px!important;
+					font-weight:normal;
+					}
+
+					.page-wrapper-shaddow {
+					box-shadow: 0 1px 1px 0 rgb(0 0 0 / 20%), 0 0.5px 20px 0 rgb(0 0 0 / 19%);
+					}
+
+					.gray-bg, .bg-muted {
+					background-color: #fff;
+					}
+
+					.buttonPrint{
+					font-size: 0.7rem;
+					padding: .1rem .75rem;
+					}
+
+				</style>
+  </head>
+  <body>
+    <div class="container  mt-3  Retail-Stylesheet-Billing-CSS" style="font-family: Segoe UI;">
+      <div class="row">
+        <div class="col-sm-8 col-md-10">
+          <div class="row">
+            <div id="divLogo" class="col-sm-2"><img src="/CustomerLogo/logo_093683423.png" style="width:100%;max-width:100px;" alt="LIDL" onerror="document.getElementById('divLogo').style.display='none'"></div>
+            <div class="col-sm-10">
+              <div class="BoldBlueHeader fontSize12pt">LIDL</div>
+              <div class="fontSize8pt"></div>
+              <div class="fontSize8pt"></div>
+              <div class="fontSize8pt">ΣΑΜΟΥ, 17, 74100, ΡΕΘΥΜΝΟ</div>
+              <div class="fontSize8pt">Α.Φ.Μ: 093683423</div>
+              <div class="fontSize8pt"></div>
+              <div class="fontSize8pt"></div>
+            </div>
+          </div>
+          <div class="mb-3"></div>
+          <div class="BoldBlueHeader fonSize10pt">Απόδειξη Λιανικής Πώλησης</div>
+          <div class="fontSize8pt">Αρ. Παραστατικού: 070305-486536</div>
+          <div class="fontSize8pt">Ημ/νία έκδοσης: 08-10-2026</div>
+        </div>
+        <div class="col-sm-4 col-md-2"><img src="https://e-invoicing.gr/api/CreateBarcode?barcode=https://e-invoicing.gr/edocuments/ViewInvoice/-1/6c60eb3b-d72d-4ff9-b890-63b0cb4cd912_64ifh798" width="100" height="100" class="rounded float-right"></div>
+      </div>
+      <div class="mb-3"></div>
+      <div class="row row-flex">
+        <div class="col-md-6 pr-md-0 mb-3 " style=" display: table;">
+          <div style="padding:2px 5px;background-color:#f2f2f2;display: table-cell;" class="backgrey">
+            <div class="row BoldBlueHeader fontSize8pt">
+              <div class="col">ΣΤΟΙΧΕΙΑ ΠΕΛΑΤΗ</div>
+            </div>
+            <div class="row">
+              <div class="col fontSize8pt">
+										Επωνυμία:
+									</div>
+              <div class="col-8 fontSize8pt">
+												ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ
+											</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 pl-md-0 mb-3 " style=" display: table;">
+          <div style="padding:2px 5px;background-color:#f2f2f2;display: table-cell;" class="backgrey">
+            <div class="row BoldBlueHeader fontSize8pt">
+              <div class="col">ΣΤΟΙΧΕΙΑ ΔΙΑΚΙΝΗΣΗΣ</div>
+            </div>
+            <div class="row">
+              <div class="col fontSize8pt">
+										Τρόπος πληρωμής:
+									</div>
+              <div class="col-md-7 col-8 col-lg-8 fontSize8pt">
+														POS / e-POS
+													</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <div id="no-more-tables" class="table-responsive">
+            <table class="table table-sm table-hover table-condensed cf fontSize6pt">
+              <thead class="cf">
+                <tr>
+                  <th>
+														ΚΩΔΙΚΟΣ
+													</th>
+                  <th>
+														ΠΕΡΙΓΡΑΦΗ
+													</th>
+                  <th>
+														ΜΜ
+													</th>
+                  <th class="text-right">
+														ΠΟΣΟΤΗΤΑ
+													</th>
+                  <th class="text-right">
+														ΤΙΜΗ ΜΟΝ.
+													</th>
+                  <th class="text-right">
+														ΑΞΙΑ ΠΡΟ ΕΚΠΤ.
+													</th>
+                  <th class="text-right">
+														ΕΚΠΤ.
+													</th>
+                  <th class="text-right">
+														ΦΠΑ%
+													</th>
+                  <th class="text-right">
+														ΣΥΝΟΛΙΚΗ ΑΞΙΑ
+													</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-title="Κωδικός">0000056</td>
+                  <td data-title="Περιγραφή">COLA 0% ΜΕ ΣΤΕΒΙΑ 2L</td>
+                  <td data-title="Μ.Μ.">TEMAXIO</td>
+                  <td class="text-right" data-title="Ποσότητα">6,00 
+															</td>
+                  <td data-title="Τιμή μονάδας" class="text-right">0,79</td>
+                  <td data-title="Αξία προ έκπτωσης" class="text-right">4,74</td>
+                  <td data-title="Έκπτωση" class="text-right">0,00</td>
+                  <td class="text-right" data-title="ΦΠΑ%">13%
+															</td>
+                  <td data-title="Συνολική Αξία" class="text-right">4,74</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mb-3"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-lg-7 col-md-6 order-md-12 mb-4 ">
+          <div class="row">
+            <div class="col-md-8 col-6 fontSize8pt text-md-right text-left">
+											Αξία προ έκπτωσης
+										</div>
+            <div class="col-md-4 col-6 fontSize8pt" style="text-align:right;">4,74EUR</div>
+          </div>
+          <div class="row">
+            <div class="col-md-8 col-6 fontSize8pt text-md-right text-left" style="text-align:right;">
+											Έκπτωση
+										</div>
+            <div class="col-md-4 col-6 fontSize8pt" style="text-align:right;">0,00EUR</div>
+          </div>
+          <div class="row">
+            <div class="col-md-8 col-6 fontSize8pt text-md-right text-left" style="font-weight: bold;text-align:right;">
+											ΤΕΛΙΚΗ ΑΞΙΑ
+										</div>
+            <div class="col-md-4 col-6 fontSize8pt" style="text-align:right;font-weight: bold;">
+              <div style="background-color:#f2f2f2;" class="backgrey">4,74EUR</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-8 col-6 fontSize6pt text-md-right text-left" style="text-align:right;">
+											Καθαρή Αξία
+										</div>
+            <div class="col-md-4 col-6 fontSize6pt" style="text-align:right;">4,19EUR</div>
+          </div>
+          <div class="row">
+            <div class="col-md-8 col-6 fontSize6pt text-md-right text-left" style="text-align:right;">
+											Φ.Π.Α
+										</div>
+            <div class="col-md-4 col-6 fontSize6pt" style="text-align:right;">0,55EUR</div>
+          </div>
+        </div>
+        <div class="col-lg-5 col-md-6  order-md-1 mb-4">
+          <div style="background-color:#f2f2f2;padding:2px 5px 0px 5px" class="backgrey">
+            <div class="row BoldBlueHeader fontSize8pt">
+              <div class="col">
+										ΑΝΑΛΥΣΗ ΦΠΑ
+									</div>
+            </div>
+            <div class="row pb-1">
+              <div class=" col-3 fontSize8pt" style="text-align:right;font-weight: bold;">
+										ΦΠΑ%
+									</div>
+              <div class=" col-6 fontSize8pt" style="text-align:right;font-weight: bold;">
+										ΚΑΘΑΡΟ ΠΟΣΟ ΑΝΑ ΦΠΑ
+									</div>
+              <div class=" col-3 fontSize8pt" style="text-align:right;font-weight: bold;">
+										ΑΞΙΑ ΦΠΑ
+									</div>
+            </div>
+            <div class="row" style="background-color:white;">
+              <div class=" col-3 fontSize6pt" style="text-align:right;">13%
+										</div>
+              <div class=" col-6 fontSize6pt" style="text-align:right">4,19EUR</div>
+              <div class=" col-3 fontSize6pt" style="text-align:right">0,55EUR</div>
+            </div>
+          </div>
+          <div class="mb-3"></div>
+          <div style="background-color:#f2f2f2; padding:2px 5px 0px 5px" class="backgrey">
+            <div class="row BoldBlueHeader fontSize8pt">
+              <div class="col">ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</div>
+            </div>
+            <div class="row pb-1">
+              <div class=" col-6 fontSize8pt" style="text-align:right;font-weight: bold;">
+											Τρόπος Πληρωμής
+										</div>
+              <div class=" col-6 fontSize8pt" style="text-align:right;font-weight: bold;">
+											Ποσό Πληρωμής
+										</div>
+            </div>
+            <div class="row">
+              <div class="col-6 fontSize6pt" style="text-align:right;background-color:white;">
+																POS / e-POS
+															</div>
+              <div class="col-6 fontSize6pt" style="text-align:right;background-color:white;">4,74EUR</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mb-3"></div>
+      <div class="fontSize8pt  Notes-CSS"><b>ΠΑΡΑΤΗΡΗΣΕΙΣ</b><div class="mb-0"></div>
+      </div>
+      <div class="mb-3"></div>
+      <div class="row fontSize6pt" style="font-family: Segoe UI;">
+        <div class="col-md-6 mb-3">
+          <div class="row">
+            <div class="col fontSize8pt mr-0 pr-0">
+									Πάροχος:
+								</div>
+            <div class="col-8 fontSize8pt ml-0 pl-0">ENTERSOFTONE Α.Ε.</div>
+          </div>
+          <div class="row">
+            <div class="col fontSize8pt mr-0 pr-0">Url πάροχου: </div>
+            <div class="col-8 fontSize8pt ml-0 pl-0"><a href="https://www.entersoft.gr" target="_blank" style="color:black">https://www.entersoft.gr</a></div>
+          </div>
+          <div class="row">
+            <div class="col fontSize8pt mr-0 pr-0">Άδεια καταλληλότητας (ΥΠΑΗΕΣ): </div>
+            <div class="col-8 fontSize8pt ml-0 pl-0">2020_07_102Entersoft_001_Paperless e-Invoicing_V1_31072020</div>
+          </div>
+          <div class="row">
+            <div class="col fontSize8pt mr-0 pr-0">UID: </div>
+            <div class="col-8 fontSize8pt ml-0 pl-0">D7302B8D7DBF41CD4335162F1D299865472CC2E1</div>
+          </div>
+          <div class="row">
+            <div class="col fontSize8pt mr-0 pr-0">M.AR.K: </div>
+            <div class="col-8 fontSize8pt ml-0 pl-0">400015588489006</div>
+          </div>
+          <div class="row">
+            <div class="col fontSize8pt mr-0 pr-0">AuthenticationCode: </div>
+            <div class="col-8 fontSize8pt  ml-0 pl-0">748D46F6658668F23B23E62492A64F7A35114A5C</div>
+          </div>
+          <div class="row">
+            <div class="col fontSize8pt mr-0 pr-0">Ημ/νία διαβίβασης: </div>
+            <div class="col-8 fontSize8pt  ml-0 pl-0">08-10-2026 20:13:08</div>
+          </div>
+        </div>
+        <div class="col-md-6" align="right"><span><p></p></span></div>
+      </div>
+      <div class="row printingButton mt-3">
+        <div class="col text-center"><a class="btn btn-primary buttonPrint" title="Εκτύπωση" href="#" onclick="window.print();return false;" id="btnPrint"><i class="fas fa-print"></i> Εκτύπωση
+
+							</a></div>
+      </div>
+    </div><script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha512-Ua/7Woz9L5O0cwB/aYexmgoaD7lw3dWe9FvXejVdgqu71gRog3oJgjSWQR55fwWx+WKuk8cl7UwA1RS6QCadFA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script><script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-Fy6S3B9q64WdZWQUiU+q4/2Lc9npb8tCaSX9FK7E8HnRr0Jz8D6OP9dO5Vg3Q9ct" crossorigin="anonymous"></script><script>
+					jQuery(document).ready(function ($) {
+
+
+					if (
+					navigator.userAgent.match(/Android/i) ||
+					navigator.userAgent.match(/iPhone/i)
+					) {
+					$(".printingButton").hide();
+					}
+
+					});
+				</script></body>
+</html>

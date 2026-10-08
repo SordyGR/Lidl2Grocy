@@ -74,9 +74,17 @@ def canonical_raw(conn, raw: str) -> str:
     return row[0] if row else raw
 
 
-def import_kept_receipt(conn, kept_text: str, filename: str, t_id, mark=None) -> dict:
-    from receipt_parser import (parse_receipt, parse_receipt_date,
-                                smart_match, build_memory, extract_card_last4)
+def write_receipt_rows(conn, df, *, filename: str, iso_date, seq: int,
+                       total: float, card_last4, mark, store: str,
+                       t_id, source_url=None) -> dict:
+    """Shared receipt-writing core for every import pipeline.
+
+    Front ends (Lidl kept-text, e-invoices, …) parse into a DataFrame with
+    Product/Qty/Unit Price/VAT/Discount columns and call this: MAPK
+    dedupe, receipts/items/products rows, fetch_state link. All pipelines
+    share one catalog, one dedupe, one row shape.
+    """
+    from receipt_parser import smart_match, build_memory
     if mark:
         hit = conn.execute("SELECT filename FROM receipts WHERE mark=?", (mark,)).fetchone()
         if hit:
@@ -86,19 +94,11 @@ def import_kept_receipt(conn, kept_text: str, filename: str, t_id, mark=None) ->
                 conn.commit()
             return {"filename": hit["filename"], "items": 0, "total": 0.0,
                     "t_id": t_id, "duplicate": True, "mark": mark}
-    df = parse_receipt(kept_text, filename)
-    if df.empty:
-        raise ValueError(f"{filename}: no items parsed")
-    parsed_total = round(float((df["Qty"] * df["Unit Price"] - df["Discount"]).sum()), 2)
-    if abs(parsed_total - extract_total(kept_text)) > 0.02:
-        raise ValueError(f"{filename}: total mismatch parsed={parsed_total}")
-    iso_date, seq = parse_receipt_date(filename)
-    card_last4 = extract_card_last4(kept_text)
     cur = conn.cursor()
     cur.execute(
-        """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4, mark)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (filename, iso_date, seq, len(df), parsed_total, card_last4, mark))
+        """INSERT OR IGNORE INTO receipts (filename, receipt_date, receipt_seq, item_count, total, card_last4, mark, store, source_url)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (filename, iso_date, seq, len(df), total, card_last4, mark, store, source_url))
     conn.commit()
     rid = cur.execute("SELECT id FROM receipts WHERE filename=?", (filename,)).fetchone()["id"]
     cur.execute("DELETE FROM items WHERE receipt_id=?", (rid,))
@@ -119,4 +119,20 @@ def import_kept_receipt(conn, kept_text: str, filename: str, t_id, mark=None) ->
     if t_id is not None:
         cur.execute("INSERT OR IGNORE INTO fetch_state (t_id, filename) VALUES (?, ?)", (t_id, filename))
     conn.commit()
-    return {"filename": filename, "items": len(df), "total": parsed_total, "t_id": t_id, "mark": mark}
+    return {"filename": filename, "items": len(df), "total": total, "t_id": t_id, "mark": mark}
+
+
+def import_kept_receipt(conn, kept_text: str, filename: str, t_id, mark=None) -> dict:
+    from receipt_parser import parse_receipt, parse_receipt_date, extract_card_last4
+    df = parse_receipt(kept_text, filename)
+    if df.empty:
+        raise ValueError(f"{filename}: no items parsed")
+    parsed_total = round(float((df["Qty"] * df["Unit Price"] - df["Discount"]).sum()), 2)
+    if abs(parsed_total - extract_total(kept_text)) > 0.02:
+        raise ValueError(f"{filename}: total mismatch parsed={parsed_total}")
+    iso_date, seq = parse_receipt_date(filename)
+    card_last4 = extract_card_last4(kept_text)
+    return write_receipt_rows(conn, df, filename=filename, iso_date=iso_date,
+                              seq=seq, total=parsed_total, card_last4=card_last4,
+                              mark=mark, store="Lidl", t_id=t_id,
+                              source_url=None)

@@ -13,6 +13,13 @@
     <button type="submit">Import pasted receipt</button>
   </form>
 </details>
+<details>
+  <summary>E-invoice link (paper receipt QR, any supermarket)</summary>
+  <form method="post" action="/fetch/einvoice">
+    <input name="url" size="80" placeholder="https://e-invoicing.gr/edocuments/…">
+    <button type="submit">Import e-invoice</button>
+  </form>
+</details>
 <div class="kpis">
   <div class="kpi"><span>Total spent</span><b>{{ "%.2f"|format(k["spent"]) }} €</b></div>
   <div class="kpi"><span>Receipts</span><b>{{ k["receipts"] }}</b></div>

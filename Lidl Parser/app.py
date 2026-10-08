@@ -201,6 +201,46 @@ def fetch_paste():
     return redirect(url_for("dashboard"))
 
 
+@app.route("/fetch/einvoice", methods=["POST"])
+def fetch_einvoice():
+    """Import a paper-receipt e-invoice via its QR link (any supermarket)."""
+    import einvoice as E
+    url = (request.form.get("url") or "").strip()
+    if not url:
+        flash("Paste an e-invoicing.gr receipt link first")
+        return redirect(url_for("dashboard"))
+    try:
+        inv = E.parse_invoice(E.fetch_invoice_html(url))
+    except Exception as e:
+        flash(f"E-invoice import failed: {e}")
+        return redirect(url_for("dashboard"))
+    yyyy, mm, dd = inv["date_iso"].split("-")
+    conn = get_db()
+    try:
+        name = pick_filename(RECEIPT_DIR, conn, yyyy[2:], mm, dd)
+        try:
+            res = E.import_invoice(conn, inv, name, source_url=url)
+        except Exception as e:
+            flash(f"E-invoice import failed: {e}")
+            return redirect(url_for("dashboard"))
+    finally:
+        conn.close()
+    if res.get("duplicate"):
+        flash(f"Already imported ({res['filename']}) — skipped")
+        return redirect(url_for("dashboard"))
+    os.makedirs(RECEIPT_DIR, exist_ok=True)
+    lines = [f"{inv['market']} e-invoice {inv['doc_number']} {inv['date_iso']}".strip()]
+    for ln in inv["lines"]:
+        lines.append(f"{ln['name']} x{ln['qty']} @ {ln['unit_price']} = {ln['total']}")
+    if inv.get("mark"):
+        lines.append(f"MAPK: {inv['mark']}")
+    lines.append(f"Source: {url}")
+    with open(os.path.join(RECEIPT_DIR, name), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    flash(f"E-invoice saved ({res['items']} items, {res['total']:.2f} EUR)")
+    return redirect(url_for("dashboard"))
+
+
 @app.context_processor
 def inject_theme():
     mode = request.cookies.get("theme", "system")

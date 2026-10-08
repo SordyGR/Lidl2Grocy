@@ -12,6 +12,7 @@
 <form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
 onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>Delete receipt</button></form>
 <a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
+{% if r["source_url"] %}<a href="{{ r["source_url"] }}">Source</a>{% endif %}
 <form method="post" action="/receipts/{{ r["id"] }}/splits-bulk" id="splitform">
 <table><tr><th>Item</th><th>Cat</th><th>Qty</th><th>Unit</th><th>VAT</th><th>Disc</th><th>Final</th><th>Match</th><th>Owner</th></tr>
 {% for i in items %}<tr id="item-{{ i["id"] }}" data-final="{{ i["final"] }}">

@@ -30,8 +30,12 @@ ABC analysis, and splits spending between users.
 
 - **Receipt ingest** — Firefox extension sync (incremental + full history scan)
   into a token-gated API; paste-box and `.txt` upload fallbacks; local
-  headless-Chromium CLI (`fetch_lidl.py`). Dedupe by Lidl transaction id **and**
-  the fiscal **MAPK** receipt id, so re-syncs never duplicate.
+  headless-Chromium CLI (`fetch_lidl.py`); **e-invoice import** — paste a
+  paper-receipt QR link (`e-invoicing.gr`, any supermarket) on the dashboard
+  and it imports through the shared pipeline (catalog matching, MAPK
+  dedupe, splits, balances), keeping the source link on the receipt.
+  Dedupe by Lidl transaction id **and** the fiscal **MAPK** receipt id,
+  so re-syncs never duplicate.
 - **Receipts** — line detail (clean name, category, qty, unit price, VAT %,
   discount, final), card last-4 detection, `.txt` download, rescan/repair
   actions (cards, names), per-user splits (equal default, exact per-line

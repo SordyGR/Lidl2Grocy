@@ -11,6 +11,7 @@
 <form method="post" action="/receipts/{{ r["id"] }}/delete" style="display:inline"
 onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>Delete receipt</button></form>
 <a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
+{% if r["source_url"] %}<a href="{{ r["source_url"] }}">Source</a>{% endif %}
 <div class="card"><h2>Items</h2>
 <button class="btn" form="splitform">Save receipt split</button>
 <form method="post" action="/receipts/{{ r["id"] }}/splits-bulk" id="splitform">
