@@ -3,6 +3,7 @@
 <p><a href="/receipts">← Receipts</a></p>
 <h1>{{ r["filename"] }} <small class="sub">{{ r["receipt_date"] }}</small></h1>
 <p class="sub">{{ r["item_count"] }} items — {{ "%.2f"|format(r["total"]) }} € · {% if r["settled"] %}Settled{% else %}Unsettled{% endif %} · Paid with {{ paid_with }}</p>
+<p class="sub" id="rsum">Split outcome: {% for s in summary %}<span data-rsum="{{ s['user_id'] }}" data-rsum-name="{{ s['name'] }}">{{ s['name'] }} {{ "%.2f"|format(s['total']) }} €</span>{% if not loop.last %} · {% endif %}{% endfor %} (<span id="rsum-label" data-default-label="{% if users|length == 2 %}Default 50-50 split{% else %}Default equal split{% endif %}">{% if summary_default %}{% if users|length == 2 %}Default 50-50 split{% else %}Default equal split{% endif %}{% else %}Custom split{% endif %}</span>)</p>
 <form method="post" action="/receipts/{{ r["id"] }}/card" style="display:inline">
 <input name="last4" size="4" maxlength="4" placeholder="card" value="{{ r["card_last4"] or "" }}">
 <button title="4 digits, or empty for cash">Set card</button>
@@ -11,8 +12,10 @@
 onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>Delete receipt</button></form>
 <a href="/receipts/{{ r["id"] }}/download">Download .txt</a>
 <div class="card"><h2>Items</h2>
+<button class="btn" form="splitform">Save receipt split</button>
+<form method="post" action="/receipts/{{ r["id"] }}/splits-bulk" id="splitform">
 <table><tr><th>Item</th><th>Cat</th><th>Qty</th><th>Unit</th><th>VAT</th><th>Disc</th><th>Final</th><th>Match</th><th>Owner</th></tr>
-{% for i in items %}<tr id="item-{{ i["id"] }}">
+{% for i in items %}<tr id="item-{{ i["id"] }}" data-final="{{ i["final"] }}">
 <td>{% if i["raw"] in pids %}<a href="/products/{{ pids[i["raw"]] }}">{{ i["clean"] }}</a>{% else %}{{ i["clean"] }}{% endif %}<br><small class="sub">{{ i["raw"] }}</small></td><td>{{ i["category"] }}</td>
 <td>{{ i["qty"] }}</td><td>{{ "%.2f"|format(i["unit_price"]) }}</td>
 <td>{{ ("%g"|format(i["vat"])) ~ "%" if i["vat"] is not none else "–" }}</td>
@@ -20,27 +23,57 @@ onsubmit="return confirm('Delete {{ r["filename"] }} and its items?')"><button>D
 <td>{% if i["match_type"]=="new" %}<span class="pill pill-amber">new</span>{% else %}{{ i["match_type"] }} {{ i["match_score"]|round|int if i["match_score"] else "" }}{% endif %}</td>
 <td>{% for s in splits.get(i["id"], []) %}{{ s["user_name"] }} {{ s["share"] }}{% if not loop.last %}, {% endif %}{% endfor %}
 <details><summary>Split</summary>
-<form method="post" action="/receipts/{{ r["id"] }}/splits">
-<input type="hidden" name="item_id" value="{{ i["id"] }}">
 {% set sh = {} %}{% for s in splits.get(i["id"], []) %}{% if sh.update({s["user_id"]: s["share"]}) %}{% endif %}{% endfor %}
-{% for u in users %}<label>{{ u["name"] }} <input id="sh_{{ i["id"] }}_{{ u["id"] }}" name="share_{{ u["id"] }}" size="4" value="{{ sh.get(u["id"], '') }}"></label>{% endfor %}
+{% for u in users %}<label>{{ u["name"] }} <input id="sh_{{ i["id"] }}_{{ u["id"] }}" name="share_{{ i["id"] }}_{{ u["id"] }}" size="4" value="{{ sh.get(u["id"], '') }}"></label>{% endfor %}
 {% if users|length == 2 %}
 {% set pct = (((sh.get(users[0]["id"], 0.5)) * 100) // 10 * 10) | int %}
 <br><label><span id="shlbl_{{ i["id"] }}">{{ users[0]["name"] }} {{ pct }}% · {{ users[1]["name"] }} {{ 100 - pct }}%</span><br>
 <input type="range" min="0" max="100" step="10" value="{{ pct }}"
-oninput="var v=Math.round(this.value),a=v/100,b=(100-v)/100;document.getElementById('sh_{{ i["id"] }}_{{ users[0]["id"] }}').value=a;document.getElementById('sh_{{ i["id"] }}_{{ users[1]["id"] }}').value=b;document.getElementById('shlbl_{{ i["id"] }}').textContent='{{ users[0]["name"] }} '+v+'% · {{ users[1]["name"] }} '+(100-v)+'%'"></label>
+oninput="var v=Math.round(this.value),a=v/100,b=(100-v)/100;document.getElementById('sh_{{ i["id"] }}_{{ users[0]["id"] }}').value=a;document.getElementById('sh_{{ i["id"] }}_{{ users[1]["id"] }}').value=b;document.getElementById('shlbl_{{ i["id"] }}').textContent='{{ users[0]["name"] }} '+v+'% · {{ users[1]["name"] }} '+(100-v)+'%';if(window.updRsum)updRsum();"></label>
 {% endif %}
-<select name="user_id" title="Assign the whole line to one user">
+<select title="Assign the whole line to one user" onchange="if(this.value){var row=this.closest('tr');var pick=this.value;row.querySelectorAll('input[name^=share_]').forEach(function(inp){var p=inp.name.split('_');inp.value=(p[p.length-1]===pick)?1:0;});this.value='';if(window.updRsum)updRsum();}">
 <option value="">—</option>
 {% for u in users %}<option value="{{ u["id"] }}">all → {{ u["name"] }}</option>{% endfor %}
 </select>
-<button class="btn">Save</button>
-</form>
 </details>
 </td>
 </tr>{% endfor %}
 </table>
+</form>
+<button class="btn" form="splitform">Save receipt split</button>
 </div>
+<script>
+function updRsum(){
+  var t={}, allEq=true, rows=0;
+  document.querySelectorAll('tr[id^="item-"]').forEach(function(row){
+    var f=parseFloat(row.getAttribute('data-final'))||0;
+    var vals=[];
+    row.querySelectorAll('input[name^="share_"]').forEach(function(inp){
+      var p=inp.name.split('_');
+      var uid=p[p.length-1];
+      var raw=(inp.value||'').trim().replace(',','.');
+      var v=raw==='' ? 0 : (parseFloat(raw)||0);
+      vals.push(v);
+      t[uid]=(t[uid]||0)+f*v;
+    });
+    if(vals.length){
+      rows++;
+      var first=vals[0];
+      if(!vals.every(function(v){return Math.abs(v-first)<0.001;})) allEq=false;
+    }
+  });
+  if(!rows) allEq=true;
+  document.querySelectorAll('[data-rsum]').forEach(function(sp){
+    var uid=sp.getAttribute('data-rsum');
+    sp.textContent=sp.getAttribute('data-rsum-name')+' '+(t[uid]||0).toFixed(2)+' €';
+  });
+  var lbl=document.getElementById('rsum-label');
+  if(lbl) lbl.textContent=allEq?lbl.getAttribute('data-default-label'):'Custom split';
+}
+document.addEventListener('input',function(e){
+  if(e.target&&e.target.name&&e.target.name.indexOf('share_')===0) updRsum();
+});
+</script>
 <div class="card" style="margin-top:1rem"><h2>Grocy push</h2>
 {% if push_log %}
 <p>Already pushed at {{ push_log["pushed_at"] }} — {{ push_log["pushed_count"] }} pushed, {{ push_log["skipped_count"] }} skipped.</p>

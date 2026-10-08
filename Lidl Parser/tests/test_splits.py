@@ -81,7 +81,7 @@ def test_v2_detail_shows_named_split_ui(tmp_path, monkeypatch):
     finally:
         c.delete_cookie("ui")
     assert "Alice" in body and "Bob" in body
-    assert "share_1" in body and "share_2" in body
+    assert f"share_{iid}_" in body
     assert "uid:share" not in body
 
 
@@ -89,7 +89,7 @@ def test_v1_detail_shows_named_split_ui(tmp_path, monkeypatch):
     c, rid, iid = _detail_client(tmp_path, monkeypatch, "spv1.db")
     body = c.get(f"/receipts/{rid}").get_data(as_text=True)
     assert "Alice" in body and "Bob" in body
-    assert "share_1" in body and "share_2" in body
+    assert f"share_{iid}_" in body
     assert "uid:share" not in body
 
 

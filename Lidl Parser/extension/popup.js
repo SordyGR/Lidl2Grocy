@@ -1,10 +1,11 @@
 const $ = (id) => document.getElementById(id);
 
 async function load() {
-  const s = await browser.storage.local.get({serverUrl: "", token: "", pageCap: 5});
+  const s = await browser.storage.local.get({serverUrl: "", token: "", pageCap: 5, fullScan: false});
   $("serverUrl").value = s.serverUrl;
   $("token").value = s.token;
   $("pageCap").value = s.pageCap;
+  $("fullScan").checked = !!s.fullScan;
 }
 
 async function save() {
@@ -12,8 +13,15 @@ async function save() {
     serverUrl: $("serverUrl").value.trim().replace(/\/$/, ""),
     token: $("token").value.trim(),
     pageCap: Math.max(1, Math.min(100, parseInt($("pageCap").value, 10) || 5)),
+    fullScan: $("fullScan").checked,
   });
 }
+
+// Persist every keystroke/toggle: closing the popup must never lose settings.
+for (const id of ["serverUrl", "token", "pageCap"]) {
+  $(id).addEventListener("input", () => { save().catch(() => {}); });
+}
+$("fullScan").addEventListener("change", () => { save().catch(() => {}); });
 
 $("sync").addEventListener("click", async () => {
   await save();

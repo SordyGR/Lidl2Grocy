@@ -1499,6 +1499,110 @@ def _split_context(conn, r, items):
     return users, splits, paid_with
 
 
+def _receipt_summary(items, users, splits):
+    """Per-user € outcome for one receipt + whether every line is equal-share.
+
+    Lines without split rows count as equal shares (same default as balances).
+    """
+    n = len(users)
+    totals = {u["id"]: 0.0 for u in users}
+    default = True
+    for it in items:
+        rows = splits.get(it["id"], [])
+        if rows:
+            by_user = {s["user_id"]: float(s["share"]) for s in rows}
+            eff = [by_user.get(u["id"], 0.0) for u in users]
+        elif n:
+            eff = [1.0 / n] * n
+        else:
+            eff = []
+        if n and (len(eff) != n or any(abs(s - 1.0 / n) > 0.01 for s in eff)):
+            default = False
+        f = float(it["final"] or 0)
+        for u, s in zip(users, eff):
+            totals[u["id"]] += f * s
+    summary = [{"user_id": u["id"], "name": u["name"],
+                "total": round(totals[u["id"]], 2)} for u in users]
+    return summary, default
+
+
+def _clean_share_row(raw_pairs):
+    """Validate [(user_id, raw_value)] under the split rules.
+
+    Returns (status, positives): status is 'ok' (positives hold only the
+    nonzero shares to store), 'invalid' (bad value or bad sum), or 'empty'
+    (nothing entered — keep the row as it is, silently).
+    """
+    named, bad = [], False
+    for uid, v in raw_pairs:
+        v = (v or "").strip()
+        if not v:
+            continue
+        try:
+            named.append((int(uid), float(v.replace(",", "."))))
+        except (TypeError, ValueError):
+            bad = True
+    if not named:
+        return ("invalid" if bad else "empty"), []
+    if (all(s >= 0 for _, s in named)
+            and abs(sum(s for _, s in named) - 1.0) < 0.001
+            and any(s > 0 for _, s in named)):
+        return "ok", [(u, s) for u, s in named if s > 0]
+    return "invalid", []
+
+
+@app.route("/receipts/<int:rid>/splits-bulk", methods=["POST"])
+def receipt_splits_bulk(rid):
+    """Whole-receipt save: every row validated with the single-row rules.
+
+    Valid rows apply; bad rows keep their old split and are named in the
+    flash. Rows with nothing entered keep their old split silently.
+    """
+    conn = get_db()
+    rows = conn.execute("SELECT id, raw FROM items WHERE receipt_id=?",
+                        (rid,)).fetchall()
+    if not rows:
+        conn.close()
+        return redirect(url_for("receipt_detail", rid=rid))
+    ids = [r["id"] for r in rows]
+    raws = {r["id"]: r["raw"] for r in rows}
+    per_item = {i: [] for i in ids}
+    for k, v in request.form.items():
+        if not k.startswith("share_"):
+            continue
+        parts = k.split("_")
+        if len(parts) != 3:
+            continue
+        try:
+            iid, uid = int(parts[1]), int(parts[2])
+        except ValueError:
+            continue
+        if iid in per_item:
+            per_item[iid].append((uid, v))
+    saved, skipped = [], []
+    for iid in ids:
+        status, cleaned = _clean_share_row(per_item[iid])
+        if status == "ok":
+            conn.execute("DELETE FROM item_splits WHERE item_id=?", (iid,))
+            for u, s in cleaned:
+                conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
+                             (iid, u, s))
+            saved.append(iid)
+        elif status == "invalid":
+            skipped.append(raws[iid])
+    conn.commit()
+    conn.close()
+    if saved:
+        if skipped:
+            flash(f"Saved {len(saved)} line(s); skipped {', '.join(skipped)} — shares must be non-negative and sum to 1.0")
+        else:
+            flash(f"Saved {len(saved)} line(s)")
+        return redirect(url_for("receipt_detail", rid=rid) + "#rsum")
+    if skipped:
+        flash(f"Nothing saved — skipped {', '.join(skipped)}: shares must be non-negative and sum to 1.0")
+    return redirect(url_for("receipt_detail", rid=rid))
+
+
 @app.route("/receipts/<int:rid>/splits", methods=["POST"])
 def receipt_splits(rid):
     try:
@@ -1524,7 +1628,7 @@ def receipt_splits(rid):
         conn.commit()
         conn.close()
         return redirect(url_for("receipt_detail", rid=rid) + f"#item-{item_id}")
-    named, bad = [], False
+    named_raw = []
     for k, v in request.form.items():
         if not k.startswith("share_"):
             continue
@@ -1532,48 +1636,42 @@ def receipt_splits(rid):
             uid = int(k.split("_", 1)[1])
         except ValueError:
             continue
-        v = (v or "").strip()
-        if not v:
-            continue
-        try:
-            s = float(v.replace(",", "."))
-        except ValueError:
-            bad = True
-            continue
-        named.append((uid, s))
-    if named or bad:
-        if named and not bad and all(s >= 0 for _, s in named) \
-                and abs(sum(s for _, s in named) - 1.0) < 0.001 \
-                and any(s > 0 for _, s in named):
+        named_raw.append((uid, v))
+    if named_raw:
+        status, cleaned = _clean_share_row(named_raw)
+        if status == "ok":
             conn.execute("DELETE FROM item_splits WHERE item_id=?", (item_id,))
-            for u, s in named:
-                if s > 0:
-                    conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
-                                 (item_id, u, s))
+            for u, s in cleaned:
+                conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
+                             (item_id, u, s))
             conn.commit()
             conn.close()
             return redirect(url_for("receipt_detail", rid=rid) + f"#item-{item_id}")
-        else:
+        elif status == "invalid":
             flash("Shares must be non-negative and sum to 1.0 — row unchanged")
-    elif request.form.get("shares"):
+            conn.close()
+            return redirect(url_for("receipt_detail", rid=rid))
+    if request.form.get("shares"):
         parts = []
         try:
             for chunk in request.form["shares"].split(","):
                 u, s = chunk.split(":")
-                parts.append((int(u), float(s)))
+                parts.append((u, s))
         except ValueError:
-            parts = []
-        if parts and abs(sum(s for _, s in parts) - 1.0) < 0.001 and all(s >= 0 for _, s in parts) and any(s > 0 for _, s in parts):
+            parts = [("x", "bad")]
+        status, cleaned = _clean_share_row(parts)
+        if status == "ok":
             conn.execute("DELETE FROM item_splits WHERE item_id=?", (item_id,))
-            for u, s in parts:
-                if s > 0:
-                    conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
-                                 (item_id, u, s))
+            for u, s in cleaned:
+                conn.execute("INSERT INTO item_splits (item_id, user_id, share) VALUES (?,?,?)",
+                             (item_id, u, s))
             conn.commit()
             conn.close()
             return redirect(url_for("receipt_detail", rid=rid) + f"#item-{item_id}")
-        else:
+        elif status == "invalid":
             flash("Shares must be non-negative and sum to 1.0 — row unchanged")
+            conn.close()
+            return redirect(url_for("receipt_detail", rid=rid))
     conn.close()
     return redirect(url_for("receipt_detail", rid=rid))
 
@@ -1590,13 +1688,15 @@ def grocy_preview(rid):
     items = _receipt_items(rid)
     conn = get_db()
     users, splits, paid_with = _split_context(conn, r, items)
+    summary, summary_default = _receipt_summary(items, users, splits)
     pids = {x["raw"]: x["id"] for x in conn.execute("SELECT id, raw FROM products")}
     conn.close()
     return render_template(_tpl("receipt_detail.html"), r=r,
                            items=items, preview=resolved,
                            grocy_configured=configured, grocy_error=err,
                            push_log=_push_log(rid), pids=pids,
-                           users=users, splits=splits, paid_with=paid_with)
+                           users=users, splits=splits, paid_with=paid_with,
+                           summary=summary, summary_default=summary_default)
 
 
 @app.route("/receipts/<int:rid>")
@@ -1608,6 +1708,7 @@ def receipt_detail(rid):
         conn.close()
         return "Not found", 404
     users, splits, paid_with = _split_context(conn, r, items)
+    summary, summary_default = _receipt_summary(items, users, splits)
     pids = {x["raw"]: x["id"] for x in conn.execute("SELECT id, raw FROM products")}
     conn.close()
     try:
@@ -1617,7 +1718,8 @@ def receipt_detail(rid):
     return render_template(_tpl("receipt_detail.html"), r=r, items=items, preview=preview,
                            grocy_configured=configured, grocy_error=err,
                            push_log=_push_log(rid), pids=pids,
-                           users=users, splits=splits, paid_with=paid_with)
+                           users=users, splits=splits, paid_with=paid_with,
+                           summary=summary, summary_default=summary_default)
 
 
 @app.route("/receipts/<int:rid>/grocy-push", methods=["POST"])

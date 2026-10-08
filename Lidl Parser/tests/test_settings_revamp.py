@@ -80,13 +80,13 @@ def test_vacation_hides_from_splits_keeps_history(tmp_path, monkeypatch):
     c.post("/settings/users/vacation", data={"id": "2", "active": "0"},
            follow_redirects=True)
     body = c.get(f"/receipts/{rid}").get_data(as_text=True)
-    assert "share_1" in body and "share_2" not in body
+    assert f"share_{iid}_1" in body and f"share_{iid}_2" not in body
     conn = dbmod.get_db()
     assert conn.execute("SELECT COUNT(*) FROM item_splits WHERE user_id=2").fetchone()[0] == 1
     conn.close()
     c.post("/settings/users/vacation", data={"id": "2", "active": "1"},
            follow_redirects=True)
-    assert "share_2" in c.get(f"/receipts/{rid}").get_data(as_text=True)
+    assert f"share_{iid}_2" in c.get(f"/receipts/{rid}").get_data(as_text=True)
 
 
 def test_delete_user_blocked_when_tied(tmp_path, monkeypatch):
