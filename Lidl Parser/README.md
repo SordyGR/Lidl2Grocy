@@ -23,8 +23,8 @@ python app.py       # -> http://127.0.0.1:5000
 - `price_history(raw, clean, category, date, price, source)` — legacy CSV continuity
 
 ## Verified migration
-54 receipts, 833 items, total 2369.95 €, 810 exact / 4 fuzzy / 19 new.
-Receipt `26-09-05.txt` parses to exactly 41.91 € (matches paper total).
+Fresh-import example: 3 receipts, 12 items, total 48.20 €, 10 exact / 1 fuzzy / 1 new.
+Example receipts parse to the paper total to the cent (see `tests/test_fetch_import.py`).
 KG fix: `0,590 kg x 14,79` -> qty=0.59, unit=14.79 (old code got qty=1, unit=8.73).
 
 ## Fetch (Firefox extension)

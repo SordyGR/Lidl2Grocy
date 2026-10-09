@@ -8,11 +8,11 @@
 
 **Tech Stack:** Flask (existing app), Jinja2, Grocy REST API (`/objects/products`, `/objects/product_barcodes`, `/objects/product_groups`, `/objects/locations`, `/objects/quantity_units`), SQLite (no migrations).
 
-**Spec:** `C:\Users\sordy\Documents\OpenCodeProject1\docs\superpowers\specs\2026-09-25-prices-abc-item-creation-design.md` (Section 1)
+**Spec:** `docs/superpowers/specs/2026-09-25-prices-abc-item-creation-design.md` (Section 1)
 
 ## Global Constraints
 
-- App lives in `C:\Users\sordy\Documents\OpenCodeProject1\Lidl Parser\` — all paths below are relative to it.
+- App lives in `Lidl Parser/` — all paths below are relative to it.
 - No DB migrations; only write path is `UPDATE products SET grocy_id/grocy_name/grocy_synced_at`.
 - Directory is not a git repo — there are no commit steps; each task ends with a verification run instead.
 - No test harness in repo — verification uses Flask `test_client` scripts and `py_compile`, not pytest.

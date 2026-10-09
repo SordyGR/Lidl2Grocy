@@ -21,7 +21,7 @@ Status: DONE
 - Verified `trim_receipt_text` keeps `22 Σεπ 2026` through the `ΕΠΙΣΤΡΟΦΕΣ ... ΔΕΝΤΕΣ` line, strips header (`Lidl Hellas`) and trailer (`κουπόνια`).
 - Verified `receipt_body_date` returns `("26", "09", "22")` from the `22.09.26 20:56` body stamp (dd.mm.yy → yy, mm, dd).
 - Verified `filename_for_date` seq=0 → `26-09-22.txt`, seq=1 → `26-09-22.1.txt`.
-- Verified `extract_total` → `82.72` from `ΣΥΝΟΛΟ 82,72`.
+- Verified `extract_total` → `12.34` from `ΣΥΝΟΛΟ 12,34`.
 - Verified both `ValueError` branches (missing start, missing end).
 - Commit step skipped per instructions (no git repo); files left on disk.
 

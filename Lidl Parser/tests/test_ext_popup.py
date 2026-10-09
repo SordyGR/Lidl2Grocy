@@ -53,7 +53,7 @@ globalThis.document = {{getElementById: (id) => globalThis.__els[id]}};
 def test_typing_persists_without_sync_click():
     res = _run("""
       await new Promise((r) => setTimeout(r, 20));
-      globalThis.__els.serverUrl.value = "http://192.168.2.10:5090/";
+      globalThis.__els.serverUrl.value = "http://server:5090/";
       globalThis.__els.token.value = "tok123";
       globalThis.__els.pageCap.value = "9";
       await globalThis.__els.serverUrl.fire("input");
@@ -62,7 +62,7 @@ def test_typing_persists_without_sync_click():
       await new Promise((r) => setTimeout(r, 20));
       console.log(JSON.stringify(globalThis.__store));
     """)
-    assert res["serverUrl"] == "http://192.168.2.10:5090"
+    assert res["serverUrl"] == "http://server:5090"
     assert res["token"] == "tok123"
     assert res["pageCap"] == 9
 

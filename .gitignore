@@ -43,3 +43,12 @@ Thumbs.db
 
 # superpowers worktrees (isolated implementation workspaces)
 .worktrees/
+
+# JS tooling (presently none in repo; insurance)
+node_modules/
+dist/
+
+# Local agent/harness state — per-machine, never committed
+.agents/
+skills-lock.json
+.superpowers/

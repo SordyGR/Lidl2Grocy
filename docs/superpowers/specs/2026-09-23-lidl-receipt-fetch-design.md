@@ -40,7 +40,7 @@ New `Lidl Parser/fetch_lidl.py` reusing existing code; no parser/schema changes 
 
 ## 5. Testing, credentials & rollout
 - Credentials: never stored/logged; only session cookies in ignored profile dir.
-- Tests: (1) pasted 22-Sep text → byte-identical kept block, correct filename, total 82.72 €;
+- Tests: (1) pasted receipt text → byte-identical kept block, correct filename, total 12.34 €;
   (2) live `--latest-only` vs manual txt; (3) second full-sync imports 0.
 - Rollout: `pip install playwright && playwright install chromium`; README Fetch section;
   `migrate.py` and `/upload` untouched.

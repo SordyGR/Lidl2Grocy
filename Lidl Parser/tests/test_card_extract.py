@@ -1,7 +1,7 @@
 def test_extracts_masked_last4():
     from receipt_parser import extract_card_last4
-    assert extract_card_last4("xxx\n  ************9366  \n") == "9366"
-    assert extract_card_last4("  46751465****9366  \n") == "9366"
+    assert extract_card_last4("xxx\n  ************1234  \n") == "1234"
+    assert extract_card_last4("  41111111****1234  \n") == "1234"
     assert extract_card_last4("no card here\n") is None
 
 

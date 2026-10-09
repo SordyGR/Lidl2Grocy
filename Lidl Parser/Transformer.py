@@ -6,8 +6,11 @@ from tkinter import Tk, filedialog
 Tk().withdraw()
 file_path = filedialog.askopenfilename(title="Select Excel file")
 
-# Output folder
-output_folder = r"C:\Users\sordy\Desktop\Lidl Parser\receipts"
+# Output folder (next to this script; override with LIDL_RECEIPTS_DIR)
+output_folder = os.environ.get(
+    "LIDL_RECEIPTS_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "receipts"),
+)
 os.makedirs(output_folder, exist_ok=True)
 
 # Load Excel

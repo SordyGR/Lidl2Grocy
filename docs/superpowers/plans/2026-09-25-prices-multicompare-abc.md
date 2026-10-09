@@ -8,11 +8,11 @@
 
 **Tech Stack:** Flask, SQLite, Chart.js 4 (already loaded in `base.html`), vanilla JS fetch.
 
-**Spec:** `C:\Users\sordy\Documents\OpenCodeProject1\docs\superpowers\specs\2026-09-25-prices-abc-item-creation-design.md` (Section 2)
+**Spec:** `docs/superpowers/specs/2026-09-25-prices-abc-item-creation-design.md` (Section 2)
 
 ## Global Constraints
 
-- App lives in `C:\Users\sordy\Documents\OpenCodeProject1\Lidl Parser\` — all paths below are relative to it.
+- App lives in `Lidl Parser/` — all paths below are relative to it.
 - No DB migrations; ABC/trend data comes only from `items` JOIN `receipts` (legacy `price_history` excluded, matching dashboard KPIs).
 - Directory is not a git repo — no commit steps; each task ends with a verification run.
 - No test harness in repo — verification uses Flask `test_client` scripts and `py_compile`, not pytest.

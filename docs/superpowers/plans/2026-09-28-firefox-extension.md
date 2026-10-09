@@ -498,7 +498,7 @@ body{width:320px;font-family:sans-serif;font-size:13px;padding:8px}
 label{display:block;margin:6px 0}input[type=text],input[type=number]{width:100%;box-sizing:border-box}
 #status{white-space:pre-wrap;margin-top:8px;min-height:3em}
 </style></head><body>
-<label>Server URL <input type="text" id="serverUrl" placeholder="http://192.168.2.10:5090"></label>
+<label>Server URL <input type="text" id="serverUrl" placeholder="http://server:5090"></label>
 <label>Token <input type="text" id="token" placeholder="paste from Settings → Extension"></label>
 <label>Page cap <input type="number" id="pageCap" min="1" max="100" value="5"></label>
 <label><input type="checkbox" id="fullScan"> Full history scan (first run / old account)</label>

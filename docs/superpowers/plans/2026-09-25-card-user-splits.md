@@ -44,8 +44,8 @@
 # Lidl Parser/tests/test_card_extract.py
 def test_extracts_masked_last4():
     from receipt_parser import extract_card_last4
-    assert extract_card_last4("xxx\n  ************9366  \n") == "9366"
-    assert extract_card_last4("  46751465****9366  \n") == "9366"
+    assert extract_card_last4("xxx\n  ************1234  \n") == "1234"
+    assert extract_card_last4("  41111111****1234  \n") == "1234"
     assert extract_card_last4("no card here\n") is None
 
 
@@ -83,7 +83,7 @@ def extract_card_last4(text):
     return None
 ```
 
-Note: `46751465****9366` matches (`\*+\s*(\d{4})\s*$` — asterisks then 4
+Note: `41111111****1234` matches (`\*+\s*(\d{4})\s*$` — asterisks then 4
 digits at line end). Cash receipts return None.
 
 In `db.py` SCHEMA append:
@@ -154,12 +154,12 @@ def test_user_crud_and_card_link(tmp_path, monkeypatch):
     c = appmod.app.test_client()
     c.post("/settings/users", data={"name": "Alice"}, follow_redirects=True)
     c.post("/settings/users", data={"name": "Bob"}, follow_redirects=True)
-    c.post("/settings/cards", data={"last4": "9366", "user_id": "1"},
+    c.post("/settings/cards", data={"last4": "1234", "user_id": "1"},
            follow_redirects=True)
     body = c.get("/settings").get_data(as_text=True)
-    assert "Alice" in body and "9366" in body
+    assert "Alice" in body and "1234" in body
     conn = dbmod.get_db()
-    link = conn.execute("SELECT user_id FROM card_map WHERE last4='9366'").fetchone()
+    link = conn.execute("SELECT user_id FROM card_map WHERE last4='1234'").fetchone()
     conn.close()
     assert link["user_id"] == 1
 

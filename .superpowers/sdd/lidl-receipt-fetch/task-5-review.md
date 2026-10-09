@@ -20,8 +20,8 @@ Scope: reviewer only. No files edited, no tests re-run, no DB touched. Evidence 
   - Asserts no CLITEST row remains: `:38-43` — fresh-connection `SELECT * FROM fetch_state WHERE t_id='CLITEST'` + `assert leftovers == []`.
   - try/finally semantics: parse/validate inside `try` (`:9-18`), cleanup in `finally` (`:19-37`), so subprocess failure still cleans via CLITEST key and the original error propagates unmasked. FK pragma at `:28` before deletes. Correct ordering (items before receipts).
   - stdlib only (`re`, `sqlite3`, `subprocess`, `os`, `sys`), DB path derived from `__file__` (`:7,25`), no hardcoded absolute paths.
-- Ruling 2 (Step 3 login wall): PASS as reported — `python fetch_lidl.py --max 2` → `LOGIN NEEDED`, exit 3, zero writes, before/after counts 58 / 906 / 0 / 58 files unchanged. No login attempted. (Accepted from report; reviewer did not re-execute per instructions.)
-- Ruling 3 (final state 58 / 906 / empty / single 26-09-22.txt): PASS as reported — report carries executed-query evidence (58 receipts, 906 items, fetch_state empty, exactly one `26-09-22*` file `26-09-22.txt`, 58 files total), checked both after the suite (proves self-cleanup) and after the `--max 2` run. No deviations / no silent cleanup claimed.
+- Ruling 2 (Step 3 login wall): PASS as reported — `python fetch_lidl.py --max 2` → `LOGIN NEEDED`, exit 3, zero writes, before/after counts unchanged. No login attempted. (Accepted from report; reviewer did not re-execute per instructions.)
+- Ruling 3 (final state: baseline counts / empty fetch_state / single manual receipt file): PASS as reported — report carries executed-query evidence (receipt/item counts, fetch_state empty, exactly one file matching the manual receipt name), checked both after the suite (proves self-cleanup) and after the `--max 2` run. No deviations / no silent cleanup claimed.
 - Step 2 (full suite 8 passed) / Step 4 (commit skipped, no git repo): as reported, consistent with brief.
 
 Spec compliance: ✅ — no missing or deviating item.

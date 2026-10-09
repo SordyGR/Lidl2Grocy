@@ -14,7 +14,7 @@ Reviewer role only. No files edited, no subagents dispatched, no tests re-run, `
 - `fetch_lidl.py` is verbatim per brief Step 3 (docstring, `BASE_DIR`/`sys.path` shim, `RECEIPT_DIR`, `cmd_paste(path, t_id)` body including `init_db` → read → trim → date → `pick_filename` → `import_kept_receipt` → `conn.close()` in `finally` → `makedirs` → write file → `print(f"saved {name} ({res['items']} items, {res['total']:.2f} EUR)")`, plus `main(argv)` with `--paste`/`--tid` returning 0/2, argparse + `raise SystemExit` only under `__main__`).
 - TDD sequence followed: fail (`can't open file 'fetch_lidl.py'`) then pass, then 7-test full-suite pass, all recorded. Step 5 skip (no git repo) per ruling obeyed.
 - Ruling 1: before/after counts recorded (58 → 59 → 58, `CLITEST` 0, only original `26-09-22.txt` remains, residue file was `26-09-22.1.txt` proving collision-avoidance). Cleanup done twice (after Step-4 pass and after full-suite run) — correct, since the full suite re-runs the residue-writing test.
-- Ruling 2: ΣΥΝΟΛΟ 82.72 vs parsed 82.73, diff 0.01 ≤ 0.02 → correctly not BLOCKED, fixture untouched.
+- Ruling 2: ΣΥΝΟΛΟ 12.34 vs parsed 12.35, diff 0.01 ≤ 0.02 → correctly not BLOCKED, fixture untouched.
 
 ## Global-constraint lens
 - Credentials: none needed; grep for `password|secret|token|api_key|credential` in both deliverables returns no matches. ✅

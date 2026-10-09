@@ -12,8 +12,8 @@ def test_parse_lidl_invoice():
     inv = E.parse_invoice(_html())
     assert inv["market"] == "Lidl"
     assert inv["date_iso"] == "2026-10-08"
-    assert inv["doc_number"] == "070305-486536"
-    assert inv["mark"] == "400015588489006"
+    assert inv["doc_number"] == "000000-000000"
+    assert inv["mark"] == "400000000000001"
     assert inv["total"] == 4.74
     assert len(inv["lines"]) == 1
     line = inv["lines"][0]
@@ -68,11 +68,11 @@ def test_fetch_resolves_viewer_url_to_api(monkeypatch):
 
     monkeypatch.setattr(requests, "get", fake_get)
     out = E.fetch_invoice_html(
-        "https://e-invoicing.gr/edocuments/ViewInvoice/-1/6c60eb3b-d72d-4ff9-b890-63b0cb4cd912_64ifh798")
+        "https://e-invoicing.gr/edocuments/ViewInvoice/-1/11111111-2222-4333-8444-555555555555_aa0bb0cc0")
     assert out == "<html>invoice</html>"
     assert "/api/GetInvoice" in seen["url"]
-    assert "intRefDocID=6c60eb3b-d72d-4ff9-b890-63b0cb4cd912" in seen["url"]
-    assert "hashToken=64ifh798" in seen["url"]
+    assert "intRefDocID=11111111-2222-4333-8444-555555555555" in seen["url"]
+    assert "hashToken=aa0bb0cc0" in seen["url"]
 
 
 def test_import_merges_into_catalog(tmp_path, monkeypatch):
@@ -92,7 +92,7 @@ def test_import_merges_into_catalog(tmp_path, monkeypatch):
         assert res["items"] == 1 and res["total"] == 4.74
         row = conn.execute("SELECT store, total, mark FROM receipts").fetchone()
         assert row["store"] == "Lidl" and row["total"] == 4.74
-        assert row["mark"] == "400015588489006"
+        assert row["mark"] == "400000000000001"
         item = conn.execute("SELECT clean FROM items").fetchone()
         assert item["clean"] == "Cola"  # shared catalog memory matched
         dup = E.import_invoice(conn, inv, "26-10-08.txt")

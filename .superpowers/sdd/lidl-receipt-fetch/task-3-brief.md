@@ -4,7 +4,7 @@ Source: `docs/superpowers/plans/2026-09-23-lidl-receipt-fetch.md`, Task 3 (verba
 **Files:**
 - Create: `Lidl Parser/fetch_lidl.py`
 - Create: `Lidl Parser/tests/test_fetch_cli.py`
-- Fixture `Lidl Parser/tests/data_paste.txt` ALREADY EXISTS (created by controller from the user's real 22-Sep Ctrl+A paste — do NOT recreate or modify it).
+- Fixture `Lidl Parser/tests/data_paste.txt` ALREADY EXISTS (sample paste fixture — do NOT recreate or modify it).
 
 **Interfaces:**
 - Consumes: `trim_receipt_text`, `receipt_body_date`, `pick_filename`, `import_kept_receipt` from Tasks 1–2 (in `Lidl Parser/fetch_lib.py` — do NOT modify); `init_db`, `get_db` (existing).

@@ -7,12 +7,12 @@ def test_user_crud_and_card_link(tmp_path, monkeypatch):
     c = appmod.app.test_client()
     c.post("/settings/users", data={"name": "Alice"}, follow_redirects=True)
     c.post("/settings/users", data={"name": "Bob"}, follow_redirects=True)
-    c.post("/settings/cards", data={"last4": "9366", "user_id": "1"},
+    c.post("/settings/cards", data={"last4": "1234", "user_id": "1"},
            follow_redirects=True)
     body = c.get("/settings").get_data(as_text=True)
-    assert "Alice" in body and "9366" in body
+    assert "Alice" in body and "1234" in body
     conn = dbmod.get_db()
-    link = conn.execute("SELECT user_id FROM card_map WHERE last4='9366'").fetchone()
+    link = conn.execute("SELECT user_id FROM card_map WHERE last4='1234'").fetchone()
     conn.close()
     assert link["user_id"] == 1
 

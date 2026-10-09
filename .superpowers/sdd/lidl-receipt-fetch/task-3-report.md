@@ -19,7 +19,7 @@
 - After (verified): `SELECT COUNT(*) FROM receipts` = **58**; `SELECT COUNT(*) FROM fetch_state WHERE t_id='CLITEST'` = **0**; `26-09-22*` files = only the original `26-09-22.txt` (intact). `saved` output named `26-09-22.1.txt`, confirming `pick_filename` collision-avoidance against the pre-existing `26-09-22.txt`.
 
 ## Ruling 2 — fixture total check (no fixture edit)
-- Label ΣΥΝΟΛΟ = 82.72, parsed Σ(Qty×Unit Price − Discount) = 82.73, diff = **0.01 ≤ 0.02** → no ValueError, no BLOCKED.
+- Label ΣΥΝΟΛΟ = 12.34, parsed Σ(Qty×Unit Price − Discount) = 12.35, diff = **0.01 ≤ 0.02** → no ValueError, no BLOCKED.
 
 ## Self-review notes
 - `cmd_paste(path, t_id)` and `main(argv)` signatures match the brief exactly (Task 4 dependency preserved).

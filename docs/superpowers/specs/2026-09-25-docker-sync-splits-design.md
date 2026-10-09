@@ -52,8 +52,8 @@ mapping, and per-item receipt splitting between users.
 - New tables: `users(id, name UNIQUE)`, `card_map(last4 PK, user_id FK)`,
   `item_splits(item_id FK, user_id FK, share REAL, PK(item_id, user_id))`;
   new `receipts.card_last4` column. Only last-4 stored, never full numbers.
-- Parser extracts last-4 from `*`-masked lines (`************9366`,
-  `46751465****9366`); null when absent/cash.
+- Parser extracts last-4 from `*`-masked lines (`************1234`,
+  `41111111****1234`); null when absent/cash.
 - Receipt page: "Paid with ****1234 → owner" line; items gain Owner column
   (per-row user select = share 1.0, or split mode with per-user amounts
   summing to row total). First view seeds equal shares across users; per-row

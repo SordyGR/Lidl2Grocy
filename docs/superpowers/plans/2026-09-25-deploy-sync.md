@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- App code lives in `Lidl Parser/`; repo root is `C:\Users\sordy\Documents\OpenCodeProject1`.
+- App code lives in `Lidl Parser/` at the repo root.
 - Run pytest from `Lidl Parser/`: `python -m pytest tests/ -q`.
 - Follow existing test conventions (`tests/test_ui.py`): `tmp_path` + `monkeypatch.setattr(dbmod, "DB_PATH", ...)` + `init_db()` + `test_client`.
 - Never commit `.env`, `data/`, `receipts/`, or personal exports (gitignored).

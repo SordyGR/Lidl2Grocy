@@ -73,22 +73,22 @@ def test_receipt_delete_cascades(tmp_path, monkeypatch):
 def test_receipt_card_override(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     rid = _seed_receipt()
-    r = c.post(f"/receipts/{rid}/card", data={"last4": "9366"}, follow_redirects=True)
+    r = c.post(f"/receipts/{rid}/card", data={"last4": "1234"}, follow_redirects=True)
     assert r.status_code == 200
     conn = dbmod.get_db()
-    assert conn.execute("SELECT card_last4 FROM receipts WHERE id=?", (rid,)).fetchone()[0] == "9366"
+    assert conn.execute("SELECT card_last4 FROM receipts WHERE id=?", (rid,)).fetchone()[0] == "1234"
     conn.close()
     r = c.post(f"/receipts/{rid}/card", data={"last4": "12ab"})
     assert r.status_code == 400
-    assert c.post("/receipts/999999/card", data={"last4": "9366"}).status_code == 404
+    assert c.post("/receipts/999999/card", data={"last4": "1234"}).status_code == 404
 
 
 def test_card_extractor_tolerant_variants():
     from receipt_parser import extract_card_last4
-    assert extract_card_last4("xxx\n  ************9366  \n") == "9366"
-    assert extract_card_last4(" terminal\n****9366 approved\nΣΥΝΟΛΟ 3,77\n") == "9366"
-    assert extract_card_last4("ΚΑΡΤΑ **** 9366\n") == "9366"
-    assert extract_card_last4("Mastercard ****9366 Auth. 123456\n") == "9366"
+    assert extract_card_last4("xxx\n  ************1234  \n") == "1234"
+    assert extract_card_last4(" terminal\n****1234 approved\nΣΥΝΟΛΟ 3,77\n") == "1234"
+    assert extract_card_last4("ΚΑΡΤΑ **** 1234\n") == "1234"
+    assert extract_card_last4("Mastercard ****1234 Auth. 123456\n") == "1234"
     assert extract_card_last4("no card here\nΣΥΝΟΛΟ 3,77\n") is None
 
 
