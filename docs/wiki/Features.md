@@ -1,6 +1,6 @@
 # Features
 
-Analysis of what Lidl2Grocy does today (v0.9.0, 185 tests, ~60 routes).
+Analysis of what Lidl2Grocy does today (v0.11.0, 242 tests).
 Two skins everywhere: v1 default, v2 via `/ui/v2` cookie; light/dark/system
 theme returns to the page you were on.
 

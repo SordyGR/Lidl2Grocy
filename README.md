@@ -6,7 +6,7 @@ Grocery receipt tracker: pulls digital receipts from Lidl Hellas, parses and
 maps products, links them to [Grocy](https://grocy.info), compares prices with
 ABC analysis, and splits spending between users.
 
-**Current version: 0.9.0** (see [Versioning](#versioning)). Full wiki:
+**Current version: 0.11.0** (see [Versioning](#versioning)). Full wiki:
 [`docs/wiki/Home.md`](docs/wiki/Home.md) — including the
 [SWOT analysis](docs/wiki/SWOT.md) and [roadmap](docs/wiki/Roadmap.md).
 
@@ -66,7 +66,7 @@ cp .env.example .env   # then fill in values (see below)
 docker compose up -d
 ```
 
-Open `http://<server-ip>:5090`. Pin a version with `TAG=v0.9.0 docker compose
+Open `http://<server-ip>:5090`. Pin a version with `TAG=v0.11.0 docker compose
 up -d` (defaults to `latest`).
 
 Developers (local build): check out the repo and run

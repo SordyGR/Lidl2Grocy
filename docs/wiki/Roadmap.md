@@ -29,7 +29,7 @@ are tags `vX.Y.Z` on `main`.
 | MINOR | New feature (page, endpoint, extension capability) |
 | PATCH | Bug fix |
 
-Pre-1.0 (`0.x`, current `0.9.0`): schema and ingest API may evolve; each MINOR
+Pre-1.0 (`0.x`, current `0.11.0`): schema and ingest API may evolve; each MINOR
 notes migrations. Extension manifest version tracks app `MAJOR.MINOR`.
 
 **1.0.0 criteria**: extension store-listed (or stable sideload story) +

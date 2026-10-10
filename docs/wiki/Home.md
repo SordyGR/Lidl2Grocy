@@ -1,6 +1,6 @@
 # Wiki — Home
 
-Project wiki for **Lidl2Grocy** (v0.9.0). Start at the repo
+Project wiki for **Lidl2Grocy** (v0.11.0). Start at the repo
 [README](../README.md) for setup; these pages go deeper.
 
 | Page | Contents |
