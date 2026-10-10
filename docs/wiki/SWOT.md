@@ -10,7 +10,7 @@
   data.
 - **Resilient to outages**: Grocy-unreachable still renders from cache;
   extension failures resume; paste/upload/CLI fallbacks always exist.
-- **185-test suite** with TDD discipline; Docker one-command deploy with
+- **242-test suite** with TDD discipline; Docker one-command deploy with
   volume-persisted data.
 - **Privacy-conscious**: card last-4 only, secrets never rendered, local-first
   SQLite + self-hosted.

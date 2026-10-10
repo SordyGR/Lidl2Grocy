@@ -2,7 +2,7 @@
 
 ## Status: in development — NOT on the Firefox Add-ons store
 
-`Lidl Parser/extension/` is Manifest V2 (`manifest.json`, version 1.0),
+`Lidl Parser/extension/` is Manifest V2 (`manifest.json`, version 1.1),
 sideload-only. Consequences:
 
 - It **unloads when Firefox closes** — repeat Load Temporary Add-on after

@@ -12,8 +12,9 @@
    chart images for household sharing.
 4. **More Greek retailers via myDATA** — e-invoicing is mandatory in Greece
    (ΑΒ Βασιλόπουλος already exposes digital receipts, others likely too):
-   abstract a fiscal-source layer (Lidl scraper first, myDATA-format parsers
-   next) behind the same trim → parse → dedupe pipeline.
+   the e-invoice pipeline already imports Lidl QR links through the shared
+   core — extend its front-end parsers market by market behind the same
+   trim → parse → dedupe pipeline.
 5. **Complete Grocy item creation & pushing** — finish the ERP new-item flow
    (purchase/stock units, conversion factors, barcodes, groups) and harden
    push (idempotent re-push, per-line status ledger).
