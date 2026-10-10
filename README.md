@@ -1,5 +1,7 @@
 # Lidl2Grocy
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
 Grocery receipt tracker: pulls digital receipts from Lidl Hellas, parses and
 maps products, links them to [Grocy](https://grocy.info), compares prices with
 ABC analysis, and splits spending between users.
@@ -170,3 +172,8 @@ documents migrations in the release notes. `1.0.0` = extension store-listed
 - Tests: `cd "Lidl Parser" && python -m pytest -q`
 - Design docs: `docs/superpowers/specs`, plans: `docs/superpowers/plans`
 - Local app notes: [`Lidl Parser/README.md`](Lidl%20Parser/README.md)
+
+## License
+
+GPL-3.0 — see [LICENSE](LICENSE). If you distribute modified versions,
+they stay under the same license.
