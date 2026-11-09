@@ -1,0 +1,13 @@
+{
+  "_comment": "OPTIONAL. Only needed if you later enable auto-updates for On-your-own installs: host this file over HTTPS, then add browser_specific_settings.gecko.update_url pointing at it and re-submit to AMO for signing. Replace ADDON_ID / VERSION / XPI_URL.",
+  "addons": {
+    "lidl2grocy-sync@sordygr.github.io": {
+      "updates": [
+        {
+          "version": "1.1",
+          "update_link": "https://YOUR-HOST/lidl2grocy-sync-1.1.xpi"
+        }
+      ]
+    }
+  }
+}

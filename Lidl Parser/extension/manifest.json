@@ -3,8 +3,19 @@
   "name": "Lidl2Grocy Sync",
   "version": "1.1",
   "description": "Sync Lidl Hellas digital receipts to the Lidl2Grocy server.",
+  "homepage_url": "https://github.com/SordyGR/Lidl2Grocy",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "lidl2grocy-sync@sordygr.github.io",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["browsingActivity", "financialAndPaymentInfo"]
+      }
+    }
+  },
+  "icons": {"48": "icons/icon-48.png", "96": "icons/icon-96.png", "128": "icons/icon-128.png"},
   "permissions": ["storage", "tabs", "*://*.lidl-hellas.gr/*", "http://*/*", "https://*/*"],
-  "browser_action": {"default_popup": "popup.html", "default_title": "Lidl2Grocy Sync"},
+  "browser_action": {"default_popup": "popup.html", "default_title": "Lidl2Grocy Sync", "default_icon": {"48": "icons/icon-48.png", "96": "icons/icon-96.png", "128": "icons/icon-128.png"}},
   "background": {"scripts": ["background.js"], "persistent": true},
   "content_scripts": [
     {"matches": ["*://*.lidl-hellas.gr/mre/purchase-history*"], "js": ["content_history.js"], "run_at": "document_idle"},

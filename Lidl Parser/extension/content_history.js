@@ -5,9 +5,11 @@
     browser.runtime.sendMessage({type: "history", loggedOut: true, url: location.href});
     return;
   }
-  // The receipt list renders asynchronously after page load (the old
-  // server scraper waited up to 15 s for it) — poll before concluding
-  // the page is empty, or a slow render looks like "no links".
+  // The receipt list renders asynchronously after page load, and much slower
+  // on a cold start (SSO redirect + bundle + API calls) — poll for the full
+  // tab budget before concluding the page is empty, or a slow render looks
+  // like "no links". Must stay under loadInTab's 30 s timeout in background.js.
+  const POLL_BUDGET_MS = 28000;
   const t0 = Date.now();
   const timer = setInterval(() => {
     const tids = [];
@@ -20,10 +22,14 @@
     if (!v.includes("mre/") && /login|sign|auth/.test(v)) {
       clearInterval(timer);
       browser.runtime.sendMessage({type: "history", loggedOut: true, url: location.href});
-    } else if (tids.length || Date.now() - t0 > 15000) {
+    } else if (tids.length || Date.now() - t0 > POLL_BUDGET_MS) {
       clearInterval(timer);
       const hasNext = !!document.querySelector("a[href*='page=']");
-      browser.runtime.sendMessage({type: "history", loggedOut: false, tids, hasNext,
+      // textLen lets the background tell "page rendered but genuinely
+      // empty" (full site chrome = kilobytes of text) apart from "page never
+      // rendered" (spinner/blank/SSO interstitial = near-empty body).
+      const textLen = document.body ? document.body.innerText.length : 0;
+      browser.runtime.sendMessage({type: "history", loggedOut: false, tids, hasNext, textLen,
                                    url: location.href, title: document.title});
     }
   }, 500);

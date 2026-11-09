@@ -116,11 +116,25 @@ async function sweep(fullScan) {
   const seen = new Set();
   const tids = [];
   let page = 0;
+  let coldRetries = 0;
+  // Cold start can leave page 1 unrendered (SSO/blank) for the whole poll
+  // budget: zero tids + a near-empty body means "not loaded", not "empty".
+  // Retry those in-sweep (max 2) so the first click succeeds on its own.
+  const looksUnrendered = (m) => !m.loggedOut && !m.closed && tids.length === 0 && page === 1
+    && coldRetries < 2
+    && (m.timeout || ((m.tids || []).length === 0 && (m.textLen || 0) < 1000));
   while (page < cap && !cancelFlag) {
     page += 1;
     progress(`History page ${page}… (${tids.length} tids so far)`);
     const m = await loadInTab(HIST(page), "history");
     if (m.loggedOut || m.closed) { progress("Log into lidl-hellas.gr in this browser first, then Sync again.", true); return; }
+    if (looksUnrendered(m)) {
+      coldRetries += 1;
+      page -= 1;
+      progress(`History page still loading — retrying (${coldRetries}/2)…`);
+      await sleep(4000);
+      continue;
+    }
     if (m.timeout) { progress(`Stopped at page ${page} (Lidl did not answer) — rerun later; resume is automatic.`, true); return; }
     let foundNew = false;
     for (const t of m.tids || []) {

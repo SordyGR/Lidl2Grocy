@@ -96,7 +96,7 @@ python app.py       # -> http://127.0.0.1:5000
 ```
 
 Isolated DB for experiments: `LIDL_DB=/tmp/x.db python fetch_lidl.py …`.
-Tests: `cd "Lidl Parser" && python -m pytest -q` (185 passed).
+Tests: `cd "Lidl Parser" && python -m pytest -q` (244 passed).
 
 ## First run checklist
 
@@ -151,7 +151,8 @@ the source of truth; releases are tags `vX.Y.Z` on `main`.
 Pre-1.0 (`0.x`): DB schema and ingest API may still evolve; every MINOR
 documents migrations in the release notes. `1.0.0` = extension store-listed
 (or stable sideload) + frozen ingest API + green fresh-install. The extension
-`manifest.json` version tracks app `MAJOR.MINOR`.
+is versioned independently in `manifest.json` (currently 1.1); bump its MINOR
+for extension capability changes.
 
 ## Troubleshooting
 

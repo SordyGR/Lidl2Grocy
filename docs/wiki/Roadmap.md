@@ -31,7 +31,8 @@ are tags `vX.Y.Z` on `main`.
 | PATCH | Bug fix |
 
 Pre-1.0 (`0.x`, current `0.11.0`): schema and ingest API may evolve; each MINOR
-notes migrations. Extension manifest version tracks app `MAJOR.MINOR`.
+notes migrations. The extension is versioned independently in `manifest.json`
+(currently 1.1); bump its MINOR for extension capability changes.
 
 **1.0.0 criteria**: extension store-listed (or stable sideload story) +
 frozen ingest API + green fresh-install + completed Grocy push flow.
