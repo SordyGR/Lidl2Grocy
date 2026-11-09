@@ -91,8 +91,10 @@ def parse_receipt(text, receipt_name=""):
                 continue
 
         # 4) discount line
+        # Match the amount at end of line: promo text can contain its own
+        # minus (e.g. "Με αγορά 2 ΤΕΜ -1€ (ΣΕΤ Α     -0,50").
         if current and ("-" in line or "κπτωση" in line or "έκπτωση" in line):
-            d_match = re.search(r"-([\d,]+)", line)
+            d_match = re.search(r"-(\d+,\d{2})\s*$", line)
             if d_match:
                 try:
                     current["Discount"] += float(d_match.group(1).replace(",", "."))
